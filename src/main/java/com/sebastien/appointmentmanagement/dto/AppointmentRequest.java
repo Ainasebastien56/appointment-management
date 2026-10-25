@@ -1,54 +1,39 @@
 package com.sebastien.appointmentmanagement.dto;
 
-import com.sebastien.appointmentmanagement.entity.AppointmentStatus;
+
+import com.sebastien.appointmentmanagement.entity.AppointmentType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
-
 import java.time.LocalDate;
+import java.time.LocalTime;
 
 public class AppointmentRequest {
-    @NotBlank
-    private String patientName;
+    @NotNull(message="Doctor ID is required")
+    private Long doctorId;
 
-    @NotBlank
-    private String doctorName;
-
-    @NotNull
+    @NotNull(message = "Appointment date is required")
     private LocalDate appointmentDate;
 
-    @NotNull
-    private AppointmentStatus status;
+    @NotNull(message = "Start time is required")
+    private LocalTime startTime;
 
-    public AppointmentRequest(){
+    private AppointmentType type;
+
+    @NotBlank(message = "Appointment reason is required")
+    private String reason;
+
+    private String notes;
+
+    public AppointmentRequest() {
     }
 
-    public AppointmentRequest(
-            String patientName,
-            String doctorName,
-            LocalDate appointmentDate,
-            AppointmentStatus status) {
-        this.patientName = patientName;
-        this.doctorName = doctorName;
-        this.appointmentDate = appointmentDate;
-        this.status = status;
+    public Long getDoctorId() {
+        return doctorId;
     }
 
-
-    public String getPatientName() {
-        return patientName;
-    }
-
-    public void setPatientName(String patientName) {
-        this.patientName = patientName;
-    }
-
-    public String getDoctorName() {
-        return doctorName;
-    }
-
-    public void setDoctorName(String doctorName) {
-        this.doctorName = doctorName;
+    public void setDoctorId(Long doctorId) {
+        this.doctorId = doctorId;
     }
 
     public LocalDate getAppointmentDate() {
@@ -59,11 +44,35 @@ public class AppointmentRequest {
         this.appointmentDate = appointmentDate;
     }
 
-    public AppointmentStatus getStatus() {
-        return status;
+    public LocalTime getStartTime() {
+        return startTime;
     }
 
-    public void setStatus(AppointmentStatus status) {
-        this.status = status;
+    public void setStartTime(LocalTime startTime) {
+        this.startTime = startTime;
+    }
+
+    public AppointmentType getType() {
+        return type;
+    }
+
+    public void setType(AppointmentType type) {
+        this.type = type;
+    }
+
+    public String getReason() {
+        return reason;
+    }
+
+    public void setReason(String reason) {
+        this.reason = reason;
+    }
+
+    public String getNotes() {
+        return notes;
+    }
+
+    public void setNotes(String notes) {
+        this.notes = notes;
     }
 }
