@@ -14,10 +14,13 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.util.Base64;
+import java.util.List;
 
 @Configuration
 public class SecurityConfig {
@@ -29,6 +32,11 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http) throws Exception {
         return http
+                // Autoriser les requêtes provenant du frontend Angular.
+                .cors(cors ->
+                        cors.configurationSource(corsConfigurationSource())
+                )
+
                 // L'API utilise des jetons Bearer et non des sessions web.
                 // On désactive CSRF pour ce fonctionnement stateless.
                 .csrf(csrf -> csrf.disable())
@@ -72,6 +80,39 @@ public class SecurityConfig {
 
         // Construit la clé cryptographique destinée à HMAC-SHA256.
         return new SecretKeySpec(keyBytes, "HmacSHA256");
+    }
+
+    @Bean
+    public UrlBasedCorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+
+        // Autoriser le frontend Angular en développement.
+        configuration.setAllowedOrigins(
+                List.of("http://localhost:4200")
+        );
+
+        // Autoriser les méthodes HTTP utilisées par l'API.
+        configuration.setAllowedMethods(
+                List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+        );
+
+        // Autoriser les en-têtes utilisés par Angular et les JWT.
+        configuration.setAllowedHeaders(
+                List.of("Authorization", "Content-Type", "Accept")
+        );
+
+        // Les requêtes utilisent un Bearer token, pas des cookies.
+        configuration.setAllowCredentials(false);
+
+        // Mettre en cache la réponse de pré-vérification pendant une heure.
+        configuration.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source =
+                new UrlBasedCorsConfigurationSource();
+
+        source.registerCorsConfiguration("/**", configuration);
+
+        return source;
     }
 
     // Configure le composant qui vérifie les signatures des JWT reçus.
