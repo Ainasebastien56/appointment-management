@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
 import java.util.Locale;
 
 @Service
@@ -109,5 +110,23 @@ public class DoctorService {
                 savedDoctor.getPhone(),
                 savedDoctor.getPracticeStartDate()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public List<DoctorResponse> getAllDoctors() {
+        return doctorRepository.findAll()
+                .stream()
+                .map(doctor -> new DoctorResponse(
+                        doctor.getId(),
+                        doctor.getUser().getId(),
+                        doctor.getUser().getEmail(),
+                        doctor.getFirstName(),
+                        doctor.getLastName(),
+                        doctor.getSpecialty(),
+                        doctor.getLicenseNumber(),
+                        doctor.getPhone(),
+                        doctor.getPracticeStartDate()
+                ))
+                .toList();
     }
 }

@@ -2,7 +2,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, ChangeDetectorRef } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 
 @Component({
@@ -15,6 +15,7 @@ import { AuthService } from '../../services/auth.service';
 export class Login {
   private readonly authService = inject(AuthService);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly router = inject(Router);
 
   protected showPassword = false;
   protected rememberMe = false;
@@ -79,6 +80,14 @@ export class Login {
         this.isSubmitting = false;
         this.notice = 'Signed in successfully.';
         this.form.password = '';
+
+        const role  = this.authService.getCurrentRole();
+
+        if (role){
+          this.router.navigate([this.authService.getDashboardUrl(role)]);
+        } else{
+          this.error = 'Unable to identify your role. Please sign in again.';
+        }
 
         this.cdr.markForCheck();
       },

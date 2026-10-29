@@ -3,6 +3,7 @@ package com.sebastien.appointmentmanagement.controller;
 
 import com.sebastien.appointmentmanagement.dto.AppointmentRequest;
 import com.sebastien.appointmentmanagement.dto.AppointmentResponse;
+import com.sebastien.appointmentmanagement.dto.AvailableSlotResponse;
 import com.sebastien.appointmentmanagement.entity.*;
 import com.sebastien.appointmentmanagement.service.AppointmentService;
 import com.sebastien.appointmentmanagement.service.CurrentUserService;
@@ -14,6 +15,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.time.LocalDate;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/appointments")
@@ -143,6 +147,32 @@ public class AppointmentController {
                 "This account cannot access appointments."
         );
     }
+
+
+    @GetMapping("/available-slots")
+    public List<AvailableSlotResponse> getAvailableSlots(
+            @RequestParam(required = false) Long doctorId,
+            @RequestParam LocalDate date,
+            Authentication authentication) {
+
+        User user = currentUserService.requireUser(authentication.getName());
+
+        if (user.getRole() != UserRole.PATIENT) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Only patients can search appointment availability."
+            );
+        }
+
+        Patient patient = currentUserService.requirePatientProfile(user);
+
+        return appointmentService.getAvailableSlots(
+                doctorId,
+                date,
+                patient
+        );
+    }
+
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

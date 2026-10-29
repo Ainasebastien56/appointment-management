@@ -3,6 +3,7 @@ package com.sebastien.appointmentmanagement.service;
 
 import com.sebastien.appointmentmanagement.dto.AppointmentRequest;
 import com.sebastien.appointmentmanagement.dto.AppointmentResponse;
+import com.sebastien.appointmentmanagement.dto.AvailableSlotResponse;
 import com.sebastien.appointmentmanagement.entity.*;
 import com.sebastien.appointmentmanagement.exception.AppointmentNotFoundException;
 import com.sebastien.appointmentmanagement.repository.AppointmentRepository;
@@ -25,6 +26,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -710,4 +712,161 @@ public class AppointmentService {
 
         return toResponse(updatedAppointment);
     }
+
+
+    @Transactional(readOnly = true)
+    public List<AvailableSlotResponse> getAvailableSlots(
+            Long requestedDoctorId,
+            LocalDate date,
+            Patient patient) {
+
+        if (date == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Appointment date is required."
+            );
+        }
+
+        if (patient == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "An authenticated patient profile is required."
+            );
+        }
+
+        if (date.isBefore(LocalDate.now())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Cannot search availability for a past date."
+            );
+        }
+
+        List<Doctor> doctors;
+
+        if (requestedDoctorId != null) {
+            doctors = List.of(findDoctorById(requestedDoctorId));
+        } else {
+            doctors = doctorRepository.findAll();
+        }
+
+        List<AvailableSlotResponse> availableSlots = new ArrayList<>();
+
+        for (Doctor doctor : doctors) {
+            Long doctorId = doctor.getId();
+
+            List<DoctorScheduleException> exceptions =
+                    doctorScheduleExceptionRepository
+                            .findByDoctor_IdAndDate(doctorId, date);
+
+            // Un jour de congé signifie qu'aucun créneau n'est proposé.
+            boolean dayOff = exceptions.stream().anyMatch(exception ->
+                    exception.getType() == ScheduleExceptionType.DAY_OFF);
+
+            if (dayOff) {
+                continue;
+            }
+
+            List<LocalTime[]> intervals = new ArrayList<>();
+
+            List<DoctorScheduleException> customHours = exceptions.stream()
+                    .filter(exception ->
+                            exception.getType()
+                                    == ScheduleExceptionType.CUSTOM_HOURS)
+                    .toList();
+
+            // Les horaires particuliers remplacent les horaires habituels.
+            if (!customHours.isEmpty()) {
+                for (DoctorScheduleException exception : customHours) {
+                    if (exception.getStartTime() != null
+                            && exception.getEndTime() != null
+                            && exception.getEndTime()
+                            .isAfter(exception.getStartTime())) {
+
+                        intervals.add(new LocalTime[]{
+                                exception.getStartTime(),
+                                exception.getEndTime()
+                        });
+                    }
+                }
+            } else {
+                List<DoctorSchedule> schedules =
+                        doctorScheduleRepository
+                                .findByDoctor_IdAndDayOfWeek(
+                                        doctorId,
+                                        date.getDayOfWeek()
+                                );
+
+                for (DoctorSchedule schedule : schedules) {
+                    intervals.add(new LocalTime[]{
+                            schedule.getStartTime(),
+                            schedule.getEndTime()
+                    });
+                }
+            }
+
+            for (LocalTime[] interval : intervals) {
+                LocalTime intervalStart = interval[0];
+                LocalTime intervalEnd = interval[1];
+
+                LocalTime startTime = intervalStart;
+
+                while (!startTime.plusMinutes(30).isAfter(intervalEnd)) {
+                    LocalTime endTime = startTime.plusMinutes(30);
+
+                    boolean isInPast =
+                            LocalDateTime.of(date, startTime)
+                                    .isBefore(LocalDateTime.now());
+
+                    boolean doctorHasConflict =
+                            appointmentRepository
+                                    .existsByDoctor_IdAndAppointmentDateAndStatusAndStartTimeLessThanAndEndTimeGreaterThan(
+                                            doctorId,
+                                            date,
+                                            AppointmentStatus.SCHEDULED,
+                                            endTime,
+                                            startTime
+                                    );
+
+                    boolean patientHasConflict =
+                            appointmentRepository
+                                    .existsByPatientAndAppointmentDateAndStatusAndStartTimeLessThanAndEndTimeGreaterThan(
+                                            patient,
+                                            date,
+                                            AppointmentStatus.SCHEDULED,
+                                            endTime,
+                                            startTime
+                                    );
+
+                    if (!isInPast
+                            && !doctorHasConflict
+                            && !patientHasConflict
+                            && fitsSlotInterval(
+                            intervalStart,
+                            intervalEnd,
+                            startTime,
+                            endTime)) {
+
+                        availableSlots.add(new AvailableSlotResponse(
+                                doctorId,
+                                fullName(
+                                        doctor.getFirstName(),
+                                        doctor.getLastName()
+                                ),
+                                startTime,
+                                endTime
+                        ));
+                    }
+
+                    startTime = startTime.plusMinutes(30);
+                }
+            }
+        }
+
+        availableSlots.sort(
+                Comparator.comparing(AvailableSlotResponse::startTime)
+                        .thenComparing(AvailableSlotResponse::doctorId)
+        );;
+        return availableSlots;
+    }
+
 }

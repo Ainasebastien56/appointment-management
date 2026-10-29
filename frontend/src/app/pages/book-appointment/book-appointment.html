@@ -1,0 +1,355 @@
+
+<div class="min-h-screen bg-[#F8F8F2] text-[#243B30]">
+  <main class="mx-auto max-w-7xl px-5 py-8 lg:px-8 lg:py-12">
+    <!-- Page heading -->
+    <div class="mb-8">
+      <p class="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-[#718D76]">
+        Patient Portal
+      </p>
+      <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">
+        Book an Appointment
+      </h2>
+      <p class="mt-3 max-w-2xl text-sm leading-6 text-[#718078] sm:text-base">
+        Choose your doctor, select a date and available time slot, and tell us
+        the reason for your visit.
+      </p>
+    </div>
+
+    <!-- Error message -->
+    @if (errorMessage) {
+      <div
+        role="alert"
+        class="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+      >
+        {{ errorMessage }}
+      </div>
+    }
+
+    <!-- Success message -->
+    @if (successMessage) {
+      <div
+        role="status"
+        class="mb-6 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
+      >
+        {{ successMessage }}
+      </div>
+    }
+
+    <div class="grid grid-cols-1 items-start gap-8 lg:grid-cols-[1fr_340px]">
+      <!-- Booking form -->
+      <section class="rounded-2xl border border-[#E6E9E0] bg-white p-5 shadow-sm sm:p-8">
+
+        <!-- Step 1: Doctor -->
+        <div class="mb-8">
+          <div class="mb-5 flex items-center gap-3">
+            <div class="flex h-9 w-9 items-center justify-center rounded-full bg-[#E8F0E7] font-bold text-[#245640]">
+              1
+            </div>
+            <div>
+              <h3 class="font-semibold">Choose a Doctor</h3>
+              <p class="text-sm text-[#829087]">
+                Select your preferred practitioner
+              </p>
+            </div>
+          </div>
+
+          <label for="doctor" class="mb-2 block text-sm font-medium text-[#405448]">
+            Doctor
+          </label>
+
+          <select
+            id="doctor"
+            name="doctor"
+            [(ngModel)]="selectedDoctorId"
+            (ngModelChange)="onCriteriaChange()"
+            [disabled]="isLoadingDoctors || isLoadingSlots || isSubmitting"
+            class="w-full rounded-xl border border-[#DCE3D8] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#47785B] focus:ring-2 focus:ring-[#47785B]/15 disabled:bg-gray-50"
+          >
+            <option [ngValue]="null">No Preference</option>
+
+            @for (doctor of doctors; track doctor.id) {
+              <option [ngValue]="doctor.id">
+                Dr. {{ doctor.firstName }} {{ doctor.lastName }}
+                @if (doctor.specialty) {
+                  — {{ doctor.specialty }}
+                }
+              </option>
+            }
+          </select>
+
+            @if (isLoadingDoctors) {
+            <p class="mt-2 text-sm text-[#829087]">
+                Loading doctors...
+            </p>
+            }
+        </div>
+
+        <div class="mb-8 border-t border-[#EDF0E9]"></div>
+
+        <!-- Step 2: Date -->
+        <div class="mb-8">
+          <div class="mb-5 flex items-center gap-3">
+            <div class="flex h-9 w-9 items-center justify-center rounded-full bg-[#E8F0E7] font-bold text-[#245640]">
+              2
+            </div>
+            <div>
+              <h3 class="font-semibold">Select a Date</h3>
+              <p class="text-sm text-[#829087]">
+                Check the doctor's availability
+              </p>
+            </div>
+          </div>
+
+          <label for="appointmentDate" class="mb-2 block text-sm font-medium text-[#405448]">
+            Appointment Date
+          </label>
+
+          <input
+            id="appointmentDate"
+            name="appointmentDate"
+            type="date"
+            [(ngModel)]="selectedDate"
+            (ngModelChange)="onCriteriaChange()"
+            [min]="minDate"
+            [disabled]="isLoadingSlots || isSubmitting"
+            class="w-full rounded-xl border border-[#DCE3D8] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#47785B] focus:ring-2 focus:ring-[#47785B]/15 disabled:bg-gray-50 sm:max-w-sm"
+          />
+        </div>
+
+        <div class="mb-8 border-t border-[#EDF0E9]"></div>
+
+        <!-- Step 3: Time slots -->
+        <div class="mb-8">
+          <div class="mb-5 flex items-center gap-3">
+            <div class="flex h-9 w-9 items-center justify-center rounded-full bg-[#E8F0E7] font-bold text-[#245640]">
+              3
+            </div>
+            <div>
+              <h3 class="font-semibold">Select a Time Slot</h3>
+              <p class="text-sm text-[#829087]">
+                Each appointment lasts 30 minutes
+              </p>
+            </div>
+          </div>
+
+          @if (isLoadingSlots) {
+            <div class="rounded-xl bg-[#F6F8F3] px-4 py-8 text-center text-sm text-[#718078]">
+              Loading available time slots...
+            </div>
+          }
+
+          @if (!isLoadingSlots && slots.length > 0) {
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+              @for (slot of slots; track slot.doctorId + '-' + slot.startTime) {
+                <button
+                  type="button"
+                  (click)="selectSlot(slot)"
+                  [disabled]="isSubmitting"
+                  [attr.aria-pressed]="selectedSlot === slot"
+                  class="rounded-xl border px-3 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+                  [ngClass]="
+                    selectedSlot === slot
+                      ? 'border-[#245640] bg-[#245640] text-white shadow-sm'
+                      : 'border-[#DCE3D8] bg-white text-[#405448] hover:border-[#70947A] hover:bg-[#F2F6EF]'
+                  "
+                >
+                  {{ slot.startTime.substring(0, 5) }}
+                  <span class="mt-1 block text-xs font-normal opacity-75">
+                    {{ slot.endTime.substring(0, 5) }}
+                  </span>
+                </button>
+              }
+            </div>
+          }
+
+          @if (!isLoadingSlots && slots.length === 0) {
+            <div class="rounded-xl border border-dashed border-[#DCE3D8] bg-[#FAFBF8] px-4 py-8 text-center">
+              <p class="font-medium text-[#405448]">
+                No Available Time Slots
+              </p>
+              <p class="mt-2 text-sm text-[#829087]">
+                Try another date or choose a different doctor.
+              </p>
+            </div>
+          }
+
+          @if (selectedDoctorId === null && slots.length > 0) {
+            <p class="mt-3 text-xs leading-5 text-[#718078]">
+              With No Preference selected, available slots may belong to
+              different doctors. The doctor associated with the selected slot
+              will appear in the summary.
+            </p>
+          }
+        </div>
+
+        <div class="mb-8 border-t border-[#EDF0E9]"></div>
+
+        <!-- Step 4: Reason -->
+        <div class="mb-8">
+          <div class="mb-5 flex items-center gap-3">
+            <div class="flex h-9 w-9 items-center justify-center rounded-full bg-[#E8F0E7] font-bold text-[#245640]">
+              4
+            </div>
+            <div>
+              <h3 class="font-semibold">Reason for Visit</h3>
+              <p class="text-sm text-[#829087]">
+                Tell us why you need an appointment
+              </p>
+            </div>
+          </div>
+
+          <label for="reason" class="mb-2 block text-sm font-medium text-[#405448]">
+            Reason <span class="text-red-600">*</span>
+          </label>
+
+          <textarea
+            id="reason"
+            name="reason"
+            [(ngModel)]="reason"
+            required
+            maxlength="500"
+            rows="3"
+            placeholder="e.g. General consultation, medical follow-up..."
+            [disabled]="isSubmitting"
+            class="w-full resize-y rounded-xl border border-[#DCE3D8] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#A1ACA3] focus:border-[#47785B] focus:ring-2 focus:ring-[#47785B]/15 disabled:bg-gray-50"
+          ></textarea>
+
+          <label for="notes" class="mb-2 mt-5 block text-sm font-medium text-[#405448]">
+            Additional Notes
+            <span class="font-normal text-[#829087]">(optional)</span>
+          </label>
+
+          <textarea
+            id="notes"
+            name="notes"
+            [(ngModel)]="notes"
+            maxlength="1000"
+            rows="2"
+            placeholder="Any additional information for your doctor..."
+            [disabled]="isSubmitting"
+            class="w-full resize-y rounded-xl border border-[#DCE3D8] bg-white px-4 py-3 text-sm outline-none transition placeholder:text-[#A1ACA3] focus:border-[#47785B] focus:ring-2 focus:ring-[#47785B]/15 disabled:bg-gray-50"
+          ></textarea>
+        </div>
+
+        <!-- Submit -->
+        <button
+          type="button"
+          (click)="submitAppointment()"
+          [disabled]="
+            isSubmitting ||
+            isLoadingDoctors ||
+            isLoadingSlots ||
+            !selectedSlot ||
+            !reason.trim()
+          "
+          class="flex w-full items-center justify-center gap-2 rounded-xl bg-[#245640] px-5 py-4 text-sm font-semibold text-white transition hover:bg-[#1B4532] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          @if (!isSubmitting) {
+            <span>Confirm Appointment</span>
+          } @else {
+            <span>Booking Appointment...</span>
+          }
+        </button>
+
+        <p class="mt-3 text-center text-xs leading-5 text-[#829087]">
+          Your appointment will be confirmed once the server accepts your
+          booking request.
+        </p>
+      </section>
+
+      <!-- Appointment summary -->
+      <aside class="rounded-2xl border border-[#E6E9E0] bg-white p-5 shadow-sm sm:p-6 lg:sticky lg:top-6">
+        <h3 class="text-lg font-bold">Appointment Summary</h3>
+        <p class="mt-1 text-sm text-[#829087]">
+          Review your selection before confirming.
+        </p>
+
+        <div class="my-5 border-t border-[#EDF0E9]"></div>
+
+        <div class="space-y-5">
+          <!-- Doctor -->
+          <div>
+            <p class="mb-1 text-xs font-medium uppercase tracking-wider text-[#829087]">
+              Doctor
+            </p>
+
+            @if (selectedSlot) {
+              <p class="font-semibold text-[#294737]">
+                Dr. {{ selectedSlot.doctorName }}
+              </p>
+            } @else if (selectedDoctorId !== null) {
+              @for (doctor of doctors; track doctor.id) {
+                @if (doctor.id === selectedDoctorId) {
+                  <p class="font-medium text-[#405448]">
+                    Dr. {{ doctor.firstName }} {{ doctor.lastName }}
+                  </p>
+                }
+              }
+            } @else {
+              <p class="font-medium text-[#405448]">
+                No Preference
+              </p>
+            }
+          </div>
+
+          <!-- Date -->
+          <div>
+            <p class="mb-1 text-xs font-medium uppercase tracking-wider text-[#829087]">
+              Date
+            </p>
+            <p class="font-medium text-[#294737]">
+              {{ selectedDate || 'Not selected' }}
+            </p>
+          </div>
+
+          <!-- Time -->
+          <div>
+            <p class="mb-1 text-xs font-medium uppercase tracking-wider text-[#829087]">
+              Time
+            </p>
+
+            @if (selectedSlot) {
+              <p class="font-medium text-[#294737]">
+                {{ selectedSlot.startTime.substring(0, 5) }}
+                –
+                {{ selectedSlot.endTime.substring(0, 5) }}
+              </p>
+            } @else {
+              <p class="text-sm text-[#829087]">
+                No time slot selected
+              </p>
+            }
+          </div>
+
+          <!-- Duration -->
+          <div>
+            <p class="mb-1 text-xs font-medium uppercase tracking-wider text-[#829087]">
+              Duration
+            </p>
+            <p class="font-medium text-[#294737]">30 minutes</p>
+          </div>
+
+          <!-- Reason -->
+          <div>
+            <p class="mb-1 text-xs font-medium uppercase tracking-wider text-[#829087]">
+              Reason for Visit
+            </p>
+            <p class="break-words text-sm text-[#405448]">
+              {{ reason.trim() || 'Not provided yet' }}
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-6 rounded-xl bg-[#F0F5ED] p-4">
+          <div class="flex items-start gap-3">
+            <span class="text-lg" aria-hidden="true">ⓘ</span>
+            <p class="text-xs leading-5 text-[#4D6B54]">
+              Availability may change. The server checks the selected time
+              slot again when you submit your booking.
+            </p>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>

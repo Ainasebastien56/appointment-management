@@ -1,0 +1,400 @@
+
+<div class="mx-auto max-w-[1600px] px-5 py-7 sm:px-8 sm:py-9">
+
+  <!-- Welcome section -->
+  <section class="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
+    <div>
+      <p class="mb-2 text-sm font-semibold uppercase tracking-[0.14em] text-[#718D76]">
+        Patient Portal
+      </p>
+      <h1 class="text-3xl font-bold tracking-tight text-[#243B30] sm:text-4xl">
+        Patient Dashboard
+      </h1>
+      <p class="mt-2 max-w-2xl text-sm leading-6 text-[#718078] sm:text-base">
+        Manage your appointments and keep track of your healthcare journey.
+      </p>
+    </div>
+
+    <a
+      routerLink="/book-appointment"
+      class="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#245640] px-5 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#194333]"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        class="h-5 w-5"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        aria-hidden="true"
+      >
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+      Book an Appointment
+    </a>
+  </section>
+
+  <!-- Error -->
+  @if (errorMessage) {
+    <div
+      role="alert"
+      class="mb-6 flex items-start justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+    >
+      <p>{{ errorMessage }}</p>
+      <button
+        type="button"
+        (click)="loadAppointments()"
+        class="shrink-0 font-semibold underline"
+      >
+        Retry
+      </button>
+    </div>
+  }
+
+  <!-- Summary cards -->
+  <section class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+
+    <article class="rounded-2xl border border-[#E6E9E0] bg-white p-5 shadow-sm sm:p-6">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p class="text-sm font-medium text-[#718078]">
+            Total Appointments
+          </p>
+          <p class="mt-3 text-3xl font-bold tabular-nums text-[#243B30]">
+            @if (isLoading) {
+              <span class="text-xl text-[#A5B1A6]">—</span>
+            } @else {
+              {{ totalAppointments }}
+            }
+          </p>
+          <p class="mt-2 text-xs text-[#829087]">
+            All appointments returned by your account
+          </p>
+        </div>
+
+        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-[#EDF3EB] text-[#245640]">
+          <svg
+            viewBox="0 0 24 24"
+            class="h-6 w-6"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="3" y="5" width="18" height="16" rx="2" />
+            <path d="M16 3v4M8 3v4M3 10h18M12 13v5M9.5 15.5h5" />
+          </svg>
+        </div>
+      </div>
+    </article>
+
+    <article class="rounded-2xl border border-[#E6E9E0] bg-white p-5 shadow-sm sm:p-6">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p class="text-sm font-medium text-[#718078]">
+            Upcoming Appointments
+          </p>
+          <p class="mt-3 text-3xl font-bold tabular-nums text-[#243B30]">
+            @if (isLoading) {
+              <span class="text-xl text-[#A5B1A6]">—</span>
+            } @else {
+              {{ upcomingCount }}
+            }
+          </p>
+          <p class="mt-2 text-xs text-[#829087]">
+            Scheduled appointments in the future
+          </p>
+        </div>
+
+        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-[#F4F1E5] text-[#8A7440]">
+          <svg
+            viewBox="0 0 24 24"
+            class="h-6 w-6"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 2" />
+          </svg>
+        </div>
+      </div>
+    </article>
+
+    <article class="rounded-2xl border border-[#E6E9E0] bg-white p-5 shadow-sm sm:p-6">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p class="text-sm font-medium text-[#718078]">
+            Completed Appointments
+          </p>
+          <p class="mt-3 text-3xl font-bold tabular-nums text-[#243B30]">
+            @if (isLoading) {
+              <span class="text-xl text-[#A5B1A6]">—</span>
+            } @else {
+              {{ completedCount }}
+            }
+          </p>
+          <p class="mt-2 text-xs text-[#829087]">
+            Appointments marked as completed
+          </p>
+        </div>
+
+        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-[#EAF1F8] text-[#4A7097]">
+          <svg
+            viewBox="0 0 24 24"
+            class="h-6 w-6"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="m8 12 2.5 2.5L16 9" />
+          </svg>
+        </div>
+      </div>
+    </article>
+
+  </section>
+
+  <!-- Main dashboard grid -->
+  <section class="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.85fr)]">
+
+    <!-- Calendar -->
+    <article class="min-w-0 rounded-2xl border border-[#E6E9E0] bg-white p-5 shadow-sm sm:p-6">
+      <div class="mb-6 flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-bold text-[#243B30]">
+            Appointment Calendar
+          </h2>
+          <p class="mt-1 text-sm text-[#829087]">
+            Select a date to view its appointments.
+          </p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            (click)="previousMonth()"
+            [attr.aria-label]="'Previous month'"
+            class="flex h-9 w-9 items-center justify-center rounded-lg border border-[#E0E6DC] text-[#476653] transition hover:bg-[#F1F5EE]"
+          >
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            (click)="nextMonth()"
+            [attr.aria-label]="'Next month'"
+            class="flex h-9 w-9 items-center justify-center rounded-lg border border-[#E0E6DC] text-[#476653] transition hover:bg-[#F1F5EE]"
+          >
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="mb-5 flex items-center justify-between gap-3">
+        <h3 class="text-base font-semibold text-[#294737]">
+          {{ monthLabel }}
+        </h3>
+
+        @if (selectedDate) {
+          <button
+            type="button"
+            (click)="clearDateFilter()"
+            class="text-xs font-semibold text-[#47785B] underline underline-offset-2"
+          >
+            Show upcoming
+          </button>
+        }
+      </div>
+
+      <div class="grid grid-cols-7 gap-y-2 text-center">
+        @for (weekday of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']; track weekday) {
+          <div class="pb-2 text-xs font-semibold text-[#829087]">
+            {{ weekday }}
+          </div>
+        }
+
+        @for (day of calendarDays; track day.date) {
+          <div class="flex justify-center px-0.5 py-1">
+            <button
+              type="button"
+              (click)="selectCalendarDay(day)"
+              [disabled]="!day.isCurrentMonth"
+              [attr.aria-label]="day.date + ', ' + day.appointmentCount + ' appointments'"
+              [attr.aria-pressed]="selectedDate === day.date"
+              class="relative flex h-9 w-9 flex-col items-center justify-center rounded-full text-sm transition sm:h-10 sm:w-10"
+              [ngClass]="{
+                'text-[#AEB7AF]': !day.isCurrentMonth,
+                'text-[#405448] hover:bg-[#F0F4ED]': day.isCurrentMonth && selectedDate !== day.date && !day.isToday,
+                'border border-[#245640] font-semibold': day.isToday && selectedDate !== day.date,
+                'bg-[#245640] font-semibold text-white': selectedDate === day.date
+              }"
+            >
+              {{ day.dayNumber }}
+
+              @if (day.hasAppointments && day.isCurrentMonth) {
+                <span
+                  class="absolute bottom-0.5 h-1 w-1 rounded-full"
+                  [ngClass]="selectedDate === day.date ? 'bg-white' : 'bg-[#70947A]'"
+                ></span>
+              }
+            </button>
+          </div>
+        }
+      </div>
+
+      <div class="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-[#EDF0E9] pt-4">
+        <div class="flex items-center gap-2 text-xs text-[#718078]">
+          <span class="h-2.5 w-2.5 rounded-full bg-[#70947A]"></span>
+          Has appointments
+        </div>
+        <div class="flex items-center gap-2 text-xs text-[#718078]">
+          <span class="h-2.5 w-2.5 rounded-full border border-[#245640]"></span>
+          Today
+        </div>
+      </div>
+    </article>
+
+    <!-- Upcoming appointments -->
+    <article class="min-w-0 rounded-2xl border border-[#E6E9E0] bg-white p-5 shadow-sm sm:p-6">
+      <div class="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-bold text-[#243B30]">
+            {{ selectedDateLabel }}
+          </h2>
+          <p class="mt-1 text-sm text-[#829087]">
+            @if (selectedDate) {
+              Appointments scheduled for this date
+            } @else {
+              Your next scheduled visits
+            }
+          </p>
+        </div>
+
+        <span class="rounded-full bg-[#EDF3EB] px-3 py-1 text-xs font-semibold text-[#245640]">
+          @if (isLoading) {
+            …
+          } @else {
+            {{ displayedAppointments.length }}
+          }
+        </span>
+      </div>
+
+      @if (isLoading) {
+        <div class="space-y-4" aria-label="Loading appointments">
+          @for (item of [1, 2, 3]; track item) {
+            <div class="animate-pulse rounded-xl border border-[#EDF0E9] p-4">
+              <div class="mb-3 h-4 w-2/3 rounded bg-[#EDF0E9]"></div>
+              <div class="h-3 w-1/2 rounded bg-[#F1F3EF]"></div>
+            </div>
+          }
+        </div>
+      } @else if (displayedAppointments.length > 0) {
+        <div class="space-y-3">
+          @for (appointment of displayedAppointments; track appointment.id) {
+            <div class="rounded-xl border border-[#E8ECE4] p-4 transition hover:border-[#C9D8C7] hover:bg-[#FCFDFB]">
+              <div class="flex items-start gap-3">
+                <div class="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-[#EDF3EB] text-[#245640]">
+                  <span class="text-[10px] font-semibold uppercase">
+                    {{ parseAppointmentMonth(appointment.appointmentDate) }}
+                  </span>
+                  <span class="text-lg font-bold leading-5">
+                    {{ appointment.appointmentDate.substring(8, 10) }}
+                  </span>
+                </div>
+
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-start justify-between gap-2">
+                    <h3 class="font-semibold text-[#294737]">
+                      Dr. {{ appointment.doctorName }}
+                    </h3>
+
+                    <span
+                      class="rounded-full px-2.5 py-1 text-[10px] font-semibold"
+                      [ngClass]="getStatusClasses(appointment.status)"
+                    >
+                      {{ getStatusLabel(appointment.status) }}
+                    </span>
+                  </div>
+
+                  <p class="mt-1 text-sm text-[#718078]">
+                    {{ appointment.reason }}
+                  </p>
+
+                  <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#718078]">
+                    <span class="inline-flex items-center gap-1.5">
+                      <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 7v5l3 2" />
+                      </svg>
+                      {{ formatTime(appointment.startTime) }} – {{ formatTime(appointment.endTime) }}
+                    </span>
+
+                    <span>
+                      {{ formatAppointmentDate(appointment.appointmentDate) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      } @else {
+        <div class="rounded-xl border border-dashed border-[#DCE3D8] bg-[#FAFBF8] px-4 py-9 text-center">
+          <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#EDF3EB] text-[#47785B]">
+            <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="16" rx="2" />
+              <path d="M16 3v4M8 3v4M3 10h18" />
+            </svg>
+          </div>
+
+          <h3 class="font-semibold text-[#405448]">
+            @if (selectedDate) {
+              No Appointments on This Date
+            } @else {
+              No Upcoming Appointments
+            }
+          </h3>
+
+          <p class="mx-auto mt-2 max-w-xs text-sm leading-5 text-[#829087]">
+            @if (selectedDate) {
+              There are no appointments scheduled for this date.
+            } @else {
+              You don't have any upcoming visits. Book an appointment when you need one.
+            }
+          </p>
+
+          <a
+            routerLink="/book-appointment"
+            class="mt-4 inline-flex items-center justify-center rounded-lg bg-[#245640] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#194333]"
+          >
+            Book an Appointment
+          </a>
+        </div>
+      }
+
+      @if (!isLoading && !selectedDate && upcomingAppointments.length > 5) {
+        <p class="mt-4 text-center text-xs text-[#829087]">
+          Showing the next 5 appointments.
+        </p>
+      }
+    </article>
+  </section>
+
+  <p class="mt-6 text-xs leading-5 text-[#829087]">
+    Appointment information is based on the records currently returned by your account.
+  </p>
+</div>
