@@ -3,15 +3,24 @@ package com.sebastien.appointmentmanagement.service;
 
 import com.sebastien.appointmentmanagement.dto.AppointmentRequest;
 import com.sebastien.appointmentmanagement.dto.AppointmentResponse;
+import com.sebastien.appointmentmanagement.dto.DoctorAppointmentStatisticsResponse;
 import com.sebastien.appointmentmanagement.entity.*;
 import com.sebastien.appointmentmanagement.exception.AppointmentNotFoundException;
 import com.sebastien.appointmentmanagement.repository.*;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Root;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
@@ -22,6 +31,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class AppointmentServiceTest {
@@ -73,6 +83,37 @@ class AppointmentServiceTest {
                 exceptionRepository,
                 mock(AppointmentStatusHistoryRepository.class)
         );
+    }
+
+    private AppointmentService createService(
+            AppointmentRepository appointmentRepository,
+            AppointmentStatusHistoryRepository historyRepository) {
+
+        return new AppointmentService(
+                appointmentRepository,
+                createDoctorRepository(),
+                mock(DoctorScheduleRepository.class),
+                mock(DoctorScheduleExceptionRepository.class),
+                historyRepository
+        );
+    }
+
+    private User createAdminUser() {
+        return new User("admin@example.com", "test-password", UserRole.ADMIN);
+    }
+
+    private User createPatientUser() {
+        return new User(
+                "jean.dupont@example.com",
+                "test-password",
+                UserRole.PATIENT
+        );
+    }
+
+    private Doctor createDoctorWithId(String lastName, Long id) {
+        Doctor doctor = createDoctor("Dr", lastName);
+        ReflectionTestUtils.setField(doctor, "id", id);
+        return doctor;
     }
 
     private Patient createPatient() {
@@ -914,8 +955,9 @@ class AppointmentServiceTest {
         // au nom du patient authentifié.
         AppointmentResponse response = service.cancelAppointment(
                 1L,
-                UserRole.PATIENT,
-                patient
+                createPatientUser(),
+                patient,
+                null
         );
 
         // Assert : vérifier que le rendez-vous est maintenant annulé.
@@ -974,8 +1016,9 @@ class AppointmentServiceTest {
                 ResponseStatusException.class,
                 () -> service.cancelAppointment(
                         1L,
-                        UserRole.PATIENT,
-                        patient
+                        createPatientUser(),
+                        patient,
+                        null
                 )
         );
 
@@ -1036,7 +1079,8 @@ class AppointmentServiceTest {
         // pas au nom d'un patient authentifié.
         AppointmentResponse response = service.cancelAppointment(
                 1L,
-                UserRole.ADMIN,
+                createAdminUser(),
+                null,
                 null
         );
 
@@ -1100,8 +1144,9 @@ class AppointmentServiceTest {
                 ResponseStatusException.class,
                 () -> service.cancelAppointment(
                         1L,
-                        UserRole.PATIENT,
-                        requestingPatient
+                        createPatientUser(),
+                        requestingPatient,
+                        null
                 )
         );
 
@@ -1144,7 +1189,8 @@ class AppointmentServiceTest {
                 ResponseStatusException.class,
                 () -> service.cancelAppointment(
                         1L,
-                        UserRole.ADMIN,
+                        createAdminUser(),
+                        null,
                         null
                 )
         );
@@ -1187,7 +1233,8 @@ class AppointmentServiceTest {
                 ResponseStatusException.class,
                 () -> service.cancelAppointment(
                         1L,
-                        UserRole.ADMIN,
+                        createAdminUser(),
+                        null,
                         null
                 )
         );
@@ -1992,6 +2039,694 @@ class AppointmentServiceTest {
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
 
         verify(repository, never()).save(any(Appointment.class));
+    }
+
+    @Test
+    void shouldAllowAssignedDoctorToUpdateNotes() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentService service =
+                createService(repository, createDoctorRepository());
+
+        Doctor doctor = createDoctor("Dr", "Martin");
+        ReflectionTestUtils.setField(doctor, "id", 10L);
+
+        Appointment appointment = createAppointment(
+                createPatient(),
+                doctor,
+                LocalDate.now().plusDays(1),
+                AppointmentStatus.SCHEDULED
+        );
+
+        when(repository.findById(1L))
+                .thenReturn(Optional.of(appointment));
+        when(repository.save(any(Appointment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        AppointmentResponse response = service.updateAppointmentNotes(
+                1L,
+                "  Patient reports improvement.  ",
+                doctor.getUser(),
+                doctor
+        );
+
+        assertEquals("Patient reports improvement.", response.getNotes());
+        verify(repository).save(appointment);
+    }
+
+    @Test
+    void shouldRejectDoctorUpdatingNotesOfAnotherDoctorsAppointment() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentService service =
+                createService(repository, createDoctorRepository());
+
+        Doctor assignedDoctor = createDoctor("Dr", "Martin");
+        ReflectionTestUtils.setField(assignedDoctor, "id", 10L);
+
+        Doctor otherDoctor = createDoctor("Dr", "Bernard");
+        ReflectionTestUtils.setField(otherDoctor, "id", 20L);
+
+        Appointment appointment = createAppointment(
+                createPatient(),
+                assignedDoctor,
+                LocalDate.now().plusDays(1),
+                AppointmentStatus.SCHEDULED
+        );
+
+        when(repository.findById(1L))
+                .thenReturn(Optional.of(appointment));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.updateAppointmentNotes(
+                        1L,
+                        "Notes from the wrong doctor",
+                        otherDoctor.getUser(),
+                        otherDoctor
+                )
+        );
+
+        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+        assertNull(appointment.getNotes());
+        verify(repository, never()).save(any(Appointment.class));
+    }
+
+    @Test
+    void shouldRejectMultipleTemporalFiltersForDoctor() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentService service =
+                createService(repository, createDoctorRepository());
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.getAppointmentsForDoctor(
+                        10L,
+                        null,
+                        PageRequest.of(0, 10),
+                        true,
+                        true,
+                        false,
+                        null
+                )
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verifyNoInteractions(repository);
+    }
+
+    // Exécute la recherche du médecin et retourne la Specification
+    // transmise au repository.
+    @SuppressWarnings("unchecked")
+    private Specification<Appointment> captureDoctorSpecification(LocalDate date) {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentService service =
+                createService(repository, createDoctorRepository());
+
+        when(repository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.getAppointmentsForDoctor(
+                10L, null, PageRequest.of(0, 10), false, false, false, date
+        );
+
+        ArgumentCaptor<Specification<Appointment>> specificationCaptor =
+                ArgumentCaptor.forClass(Specification.class);
+        verify(repository).findAll(
+                specificationCaptor.capture(),
+                any(Pageable.class)
+        );
+
+        return specificationCaptor.getValue();
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void shouldAddDatePredicateToDoctorSpecification() {
+        LocalDate date = LocalDate.of(2026, 10, 20);
+        Specification<Appointment> specification =
+                captureDoctorSpecification(date);
+
+        // Simule l'API Criteria pour observer les prédicats construits.
+        Root<Appointment> root = mock(Root.class);
+        CriteriaQuery<?> query = mock(CriteriaQuery.class);
+        CriteriaBuilder criteriaBuilder = mock(CriteriaBuilder.class);
+
+        Path appointmentDatePath = mock(Path.class);
+        Path doctorPath = mock(Path.class);
+        Path doctorIdPath = mock(Path.class);
+
+        when(root.get("appointmentDate")).thenReturn(appointmentDatePath);
+        when(root.get("doctor")).thenReturn(doctorPath);
+        when(doctorPath.get("id")).thenReturn(doctorIdPath);
+
+        specification.toPredicate(root, query, criteriaBuilder);
+
+        // Le résultat est limité au médecin ET à la date demandée.
+        verify(criteriaBuilder).equal(doctorIdPath, 10L);
+        verify(criteriaBuilder).equal(appointmentDatePath, date);
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void shouldNotAddDatePredicateWhenDateIsMissing() {
+        Specification<Appointment> specification =
+                captureDoctorSpecification(null);
+
+        Root<Appointment> root = mock(Root.class);
+        CriteriaBuilder criteriaBuilder = mock(CriteriaBuilder.class);
+
+        Path appointmentDatePath = mock(Path.class);
+        Path doctorPath = mock(Path.class);
+        Path doctorIdPath = mock(Path.class);
+
+        when(root.get("appointmentDate")).thenReturn(appointmentDatePath);
+        when(root.get("doctor")).thenReturn(doctorPath);
+        when(doctorPath.get("id")).thenReturn(doctorIdPath);
+
+        specification.toPredicate(root, mock(CriteriaQuery.class), criteriaBuilder);
+
+        verify(criteriaBuilder).equal(doctorIdPath, 10L);
+        verify(criteriaBuilder, never()).equal(eq(appointmentDatePath), any(Object.class));
+    }
+
+    // Exécute la recherche du médecin et retourne le Pageable transmis au repository.
+    @SuppressWarnings("unchecked")
+    private Pageable captureDoctorPageable(
+            Pageable requested,
+            boolean upcomingOnly,
+            boolean pendingOutcomeOnly,
+            boolean pastOutcomeOnly,
+            LocalDate date) {
+
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentService service =
+                createService(repository, createDoctorRepository());
+
+        when(repository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.getAppointmentsForDoctor(
+                10L, null, requested,
+                upcomingOnly, pendingOutcomeOnly, pastOutcomeOnly, date
+        );
+
+        ArgumentCaptor<Pageable> pageableCaptor =
+                ArgumentCaptor.forClass(Pageable.class);
+        verify(repository).findAll(
+                any(Specification.class),
+                pageableCaptor.capture()
+        );
+
+        return pageableCaptor.getValue();
+    }
+
+    @Test
+    void shouldSortUpcomingDoctorAppointmentsNearestFirst() {
+        Pageable used = captureDoctorPageable(
+                PageRequest.of(1, 10), true, false, false, null
+        );
+
+        assertEquals(1, used.getPageNumber());
+        assertEquals(10, used.getPageSize());
+        assertEquals(
+                Sort.by(Sort.Order.asc("appointmentDate"), Sort.Order.asc("startTime")),
+                used.getSort()
+        );
+    }
+
+    @Test
+    void shouldSortDoctorDayAgendaNearestFirst() {
+        Pageable used = captureDoctorPageable(
+                PageRequest.of(0, 10), false, false, false, LocalDate.now()
+        );
+
+        assertEquals(
+                Sort.by(Sort.Order.asc("appointmentDate"), Sort.Order.asc("startTime")),
+                used.getSort()
+        );
+    }
+
+    @Test
+    void shouldSortPastDoctorAppointmentsMostRecentFirst() {
+        Sort mostRecentFirst = Sort.by(
+                Sort.Order.desc("appointmentDate"),
+                Sort.Order.desc("startTime")
+        );
+
+        assertEquals(mostRecentFirst, captureDoctorPageable(
+                PageRequest.of(0, 10), false, false, true, null
+        ).getSort());
+
+        assertEquals(mostRecentFirst, captureDoctorPageable(
+                PageRequest.of(0, 10), false, true, false, null
+        ).getSort());
+    }
+
+    @Test
+    void shouldKeepClientSortForDoctorAppointments() {
+        Pageable requested = PageRequest.of(
+                0, 10, Sort.by(Sort.Order.desc("createdAt"))
+        );
+
+        Pageable used = captureDoctorPageable(
+                requested, true, false, false, null
+        );
+
+        assertEquals(requested, used);
+    }
+
+    // Mocks de l'API Criteria permettant d'observer les prédicats construits.
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static class CriteriaMocks {
+        final Root<Appointment> root = mock(Root.class);
+        final CriteriaBuilder criteriaBuilder = mock(CriteriaBuilder.class);
+        final Path doctorPath = mock(Path.class);
+        final Path doctorIdPath = mock(Path.class);
+        final Path patientPath = mock(Path.class);
+        final Path patientIdPath = mock(Path.class);
+        final Path appointmentDatePath = mock(Path.class);
+        final Path statusPath = mock(Path.class);
+
+        CriteriaMocks() {
+            when(root.get("doctor")).thenReturn(doctorPath);
+            when(doctorPath.get("id")).thenReturn(doctorIdPath);
+            when(root.get("patient")).thenReturn(patientPath);
+            when(patientPath.get("id")).thenReturn(patientIdPath);
+            when(root.get("appointmentDate")).thenReturn(appointmentDatePath);
+            when(root.get("status")).thenReturn(statusPath);
+        }
+
+        void evaluate(Specification<Appointment> specification) {
+            specification.toPredicate(
+                    root, mock(CriteriaQuery.class), criteriaBuilder
+            );
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Specification<Appointment>> captureCountSpecifications(
+            AppointmentRepository repository,
+            int expectedCalls) {
+
+        ArgumentCaptor<Specification<Appointment>> captor =
+                ArgumentCaptor.forClass(Specification.class);
+        verify(repository, times(expectedCalls)).count(captor.capture());
+        return captor.getAllValues();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldReturnDoctorAppointmentStatistics() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentService service =
+                createService(repository, createDoctorRepository());
+
+        when(repository.count(any(Specification.class)))
+                .thenReturn(2L, 5L, 1L, 7L);
+
+        DoctorAppointmentStatisticsResponse statistics =
+                service.getDoctorAppointmentStatistics(10L);
+
+        assertEquals(2L, statistics.todayAppointments());
+        assertEquals(5L, statistics.upcomingAppointments());
+        assertEquals(1L, statistics.pendingOutcomes());
+        assertEquals(7L, statistics.completedAppointments());
+    }
+
+    @Test
+    void shouldScopeDoctorStatisticsToDoctor() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentService service =
+                createService(repository, createDoctorRepository());
+
+        service.getDoctorAppointmentStatistics(10L);
+
+        List<Specification<Appointment>> specifications =
+                captureCountSpecifications(repository, 4);
+
+        // Chaque comptage est limité au médecin et n'utilise jamais le patient.
+        for (Specification<Appointment> specification : specifications) {
+            CriteriaMocks mocks = new CriteriaMocks();
+            mocks.evaluate(specification);
+
+            verify(mocks.criteriaBuilder).equal(mocks.doctorIdPath, 10L);
+            verify(mocks.root, never()).get("patient");
+        }
+
+        // 1. Aujourd'hui : date du jour, annulations exclues.
+        CriteriaMocks today = new CriteriaMocks();
+        today.evaluate(specifications.get(0));
+        verify(today.criteriaBuilder)
+                .equal(today.appointmentDatePath, LocalDate.now());
+        verify(today.criteriaBuilder)
+                .notEqual(today.statusPath, AppointmentStatus.CANCELLED);
+
+        // 2 et 3. À venir et en attente : uniquement les rendez-vous planifiés.
+        for (int index = 1; index <= 2; index++) {
+            CriteriaMocks temporal = new CriteriaMocks();
+            temporal.evaluate(specifications.get(index));
+            verify(temporal.criteriaBuilder)
+                    .equal(temporal.statusPath, AppointmentStatus.SCHEDULED);
+            verify(temporal.criteriaBuilder, never())
+                    .notEqual(any(), any(Object.class));
+        }
+
+        // 4. Terminés : statut COMPLETED.
+        CriteriaMocks completed = new CriteriaMocks();
+        completed.evaluate(specifications.get(3));
+        verify(completed.criteriaBuilder)
+                .equal(completed.statusPath, AppointmentStatus.COMPLETED);
+    }
+
+    @Test
+    void shouldScopePatientStatisticsToPatient() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentService service =
+                createService(repository, createDoctorRepository());
+
+        service.getPatientAppointmentStatistics(1L);
+
+        List<Specification<Appointment>> specifications =
+                captureCountSpecifications(repository, 3);
+
+        // Le comportement patient reste inchangé : aucun filtre de date
+        // ni exclusion des annulations.
+        for (Specification<Appointment> specification : specifications) {
+            CriteriaMocks mocks = new CriteriaMocks();
+            mocks.evaluate(specification);
+
+            verify(mocks.criteriaBuilder).equal(mocks.patientIdPath, 1L);
+            verify(mocks.root, never()).get("doctor");
+            verify(mocks.criteriaBuilder, never())
+                    .notEqual(any(), any(Object.class));
+        }
+
+        CriteriaMocks cancelled = new CriteriaMocks();
+        cancelled.evaluate(specifications.get(2));
+        verify(cancelled.criteriaBuilder)
+                .equal(cancelled.statusPath, AppointmentStatus.CANCELLED);
+    }
+
+    @Test
+    void shouldAllowDoctorToCancelOwnScheduledAppointmentWithReason() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentStatusHistoryRepository historyRepository =
+                mock(AppointmentStatusHistoryRepository.class);
+        AppointmentService service =
+                createService(repository, historyRepository);
+
+        Doctor doctor = createDoctorWithId("Martin", 10L);
+
+        Appointment appointment = createAppointment(
+                createPatient(),
+                doctor,
+                LocalDate.now().plusDays(1),
+                AppointmentStatus.SCHEDULED
+        );
+
+        when(repository.findById(1L))
+                .thenReturn(Optional.of(appointment));
+        when(repository.save(any(Appointment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        AppointmentResponse response = service.updateAppointmentStatus(
+                1L,
+                AppointmentStatus.CANCELLED,
+                doctor.getUser(),
+                doctor,
+                "  Doctor unavailable due to an emergency.  "
+        );
+
+        assertEquals(AppointmentStatus.CANCELLED, response.getStatus());
+        assertEquals(
+                "Doctor unavailable due to an emergency.",
+                response.getCancellationReason()
+        );
+
+        ArgumentCaptor<AppointmentStatusHistory> historyCaptor =
+                ArgumentCaptor.forClass(AppointmentStatusHistory.class);
+        verify(historyRepository).save(historyCaptor.capture());
+
+        AppointmentStatusHistory history = historyCaptor.getValue();
+        assertEquals(AppointmentStatus.SCHEDULED, history.getPreviousStatus());
+        assertEquals(AppointmentStatus.CANCELLED, history.getNewStatus());
+        assertEquals(
+                "Doctor unavailable due to an emergency.",
+                history.getChangeReason()
+        );
+        assertEquals(doctor.getUser(), history.getChangedBy());
+    }
+
+    @Test
+    void shouldRejectDoctorCancellationWithoutReason() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentStatusHistoryRepository historyRepository =
+                mock(AppointmentStatusHistoryRepository.class);
+        AppointmentService service =
+                createService(repository, historyRepository);
+
+        Doctor doctor = createDoctorWithId("Martin", 10L);
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.updateAppointmentStatus(
+                        1L,
+                        AppointmentStatus.CANCELLED,
+                        doctor.getUser(),
+                        doctor,
+                        "   "
+                )
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verify(repository, never()).save(any(Appointment.class));
+        verifyNoInteractions(historyRepository);
+    }
+
+    @Test
+    void shouldRejectDoctorCancellingAnotherDoctorsAppointment() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentStatusHistoryRepository historyRepository =
+                mock(AppointmentStatusHistoryRepository.class);
+        AppointmentService service =
+                createService(repository, historyRepository);
+
+        Doctor assignedDoctor = createDoctorWithId("Martin", 10L);
+        Doctor otherDoctor = createDoctorWithId("Bernard", 20L);
+
+        Appointment appointment = createAppointment(
+                createPatient(),
+                assignedDoctor,
+                LocalDate.now().plusDays(1),
+                AppointmentStatus.SCHEDULED
+        );
+
+        when(repository.findById(1L))
+                .thenReturn(Optional.of(appointment));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.updateAppointmentStatus(
+                        1L,
+                        AppointmentStatus.CANCELLED,
+                        otherDoctor.getUser(),
+                        otherDoctor,
+                        "Not my appointment"
+                )
+        );
+
+        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+        assertEquals(AppointmentStatus.SCHEDULED, appointment.getStatus());
+        verify(repository, never()).save(any(Appointment.class));
+        verifyNoInteractions(historyRepository);
+    }
+
+    @Test
+    void shouldRejectDoctorCancellingCompletedAppointment() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentStatusHistoryRepository historyRepository =
+                mock(AppointmentStatusHistoryRepository.class);
+        AppointmentService service =
+                createService(repository, historyRepository);
+
+        Doctor doctor = createDoctorWithId("Martin", 10L);
+
+        Appointment appointment = createAppointment(
+                createPatient(),
+                doctor,
+                LocalDate.now().plusDays(1),
+                AppointmentStatus.COMPLETED
+        );
+
+        when(repository.findById(1L))
+                .thenReturn(Optional.of(appointment));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.updateAppointmentStatus(
+                        1L,
+                        AppointmentStatus.CANCELLED,
+                        doctor.getUser(),
+                        doctor,
+                        "Too late"
+                )
+        );
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        verify(repository, never()).save(any(Appointment.class));
+        verifyNoInteractions(historyRepository);
+    }
+
+    @Test
+    void shouldRejectDoctorCancellingStartedAppointment() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentStatusHistoryRepository historyRepository =
+                mock(AppointmentStatusHistoryRepository.class);
+        AppointmentService service =
+                createService(repository, historyRepository);
+
+        Doctor doctor = createDoctorWithId("Martin", 10L);
+
+        // Rendez-vous planifié dont l'heure de début est déjà passée.
+        Appointment appointment = createAppointment(
+                createPatient(),
+                doctor,
+                LocalDate.now().minusDays(1),
+                AppointmentStatus.SCHEDULED
+        );
+
+        when(repository.findById(1L))
+                .thenReturn(Optional.of(appointment));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.updateAppointmentStatus(
+                        1L,
+                        AppointmentStatus.CANCELLED,
+                        doctor.getUser(),
+                        doctor,
+                        "Patient never came"
+                )
+        );
+
+        assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
+        assertEquals(
+                "Appointments that have already started cannot be cancelled.",
+                exception.getReason()
+        );
+        assertNull(appointment.getCancellationReason());
+        verify(repository, never()).save(any(Appointment.class));
+        verifyNoInteractions(historyRepository);
+    }
+
+    @Test
+    void shouldRecordHistoryWhenPatientCancelsWithReason() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentStatusHistoryRepository historyRepository =
+                mock(AppointmentStatusHistoryRepository.class);
+        AppointmentService service =
+                createService(repository, historyRepository);
+
+        Patient patient = mock(Patient.class);
+        when(patient.getId()).thenReturn(1L);
+
+        User patientUser = createPatientUser();
+
+        Appointment appointment = createAppointment(
+                patient,
+                createDoctorWithId("Martin", 10L),
+                LocalDate.now().plusDays(2),
+                AppointmentStatus.SCHEDULED
+        );
+
+        when(repository.findById(1L))
+                .thenReturn(Optional.of(appointment));
+        when(repository.save(any(Appointment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        AppointmentResponse response = service.cancelAppointment(
+                1L,
+                patientUser,
+                patient,
+                "  I have a work conflict.  "
+        );
+
+        assertEquals(AppointmentStatus.CANCELLED, response.getStatus());
+        assertEquals("I have a work conflict.", response.getCancellationReason());
+
+        ArgumentCaptor<AppointmentStatusHistory> historyCaptor =
+                ArgumentCaptor.forClass(AppointmentStatusHistory.class);
+        verify(historyRepository).save(historyCaptor.capture());
+
+        AppointmentStatusHistory history = historyCaptor.getValue();
+        assertEquals(AppointmentStatus.SCHEDULED, history.getPreviousStatus());
+        assertEquals(AppointmentStatus.CANCELLED, history.getNewStatus());
+        assertEquals("I have a work conflict.", history.getChangeReason());
+        assertEquals(patientUser, history.getChangedBy());
+    }
+
+    @Test
+    void shouldRecordHistoryWithoutReasonWhenAdminCancels() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentStatusHistoryRepository historyRepository =
+                mock(AppointmentStatusHistoryRepository.class);
+        AppointmentService service =
+                createService(repository, historyRepository);
+
+        User admin = createAdminUser();
+
+        Appointment appointment = createAppointment(
+                createPatient(),
+                createDoctorWithId("Martin", 10L),
+                LocalDate.now().plusDays(2),
+                AppointmentStatus.SCHEDULED
+        );
+
+        when(repository.findById(1L))
+                .thenReturn(Optional.of(appointment));
+        when(repository.save(any(Appointment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        AppointmentResponse response =
+                service.cancelAppointment(1L, admin, null, "   ");
+
+        assertEquals(AppointmentStatus.CANCELLED, response.getStatus());
+        assertNull(response.getCancellationReason());
+
+        ArgumentCaptor<AppointmentStatusHistory> historyCaptor =
+                ArgumentCaptor.forClass(AppointmentStatusHistory.class);
+        verify(historyRepository).save(historyCaptor.capture());
+
+        assertNull(historyCaptor.getValue().getChangeReason());
+        assertEquals(admin, historyCaptor.getValue().getChangedBy());
+    }
+
+    @Test
+    void shouldRejectAdminCancellingThroughStatusEndpoint() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentStatusHistoryRepository historyRepository =
+                mock(AppointmentStatusHistoryRepository.class);
+        AppointmentService service =
+                createService(repository, historyRepository);
+
+        User admin = new User(
+                "admin@example.com",
+                "test-password",
+                UserRole.ADMIN
+        );
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.updateAppointmentStatus(
+                        1L,
+                        AppointmentStatus.CANCELLED,
+                        admin,
+                        null,
+                        "Admin cancellation"
+                )
+        );
+
+        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+        verifyNoInteractions(repository, historyRepository);
     }
 
     @Test

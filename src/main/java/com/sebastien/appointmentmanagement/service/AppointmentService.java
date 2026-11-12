@@ -5,6 +5,7 @@ import com.sebastien.appointmentmanagement.dto.AppointmentRequest;
 import com.sebastien.appointmentmanagement.dto.AppointmentResponse;
 import com.sebastien.appointmentmanagement.dto.AppointmentStatisticsResponse;
 import com.sebastien.appointmentmanagement.dto.AvailableSlotResponse;
+import com.sebastien.appointmentmanagement.dto.DoctorAppointmentStatisticsResponse;
 import com.sebastien.appointmentmanagement.entity.*;
 import com.sebastien.appointmentmanagement.exception.AppointmentNotFoundException;
 import com.sebastien.appointmentmanagement.repository.*;
@@ -12,7 +13,9 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Root;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -78,6 +81,7 @@ public class AppointmentService {
         response.setReason(appointment.getReason());
         response.setStatus(appointment.getStatus());
         response.setNotes(appointment.getNotes());
+        response.setCancellationReason(appointment.getCancellationReason());
         response.setCreatedAt(appointment.getCreatedAt());
         response.setUpdatedAt(appointment.getUpdatedAt());
 
@@ -318,15 +322,9 @@ public class AppointmentService {
             AppointmentStatus status,
             Pageable pageable) {
 
-        // Limite obligatoirement les résultats au patient identifié par le serveur.
-        return getAppointmentsScoped(
-                patientId, null, doctorName, status, pageable, false, false, false
-        ).map( response -> {
-            if (response.getStatus() == AppointmentStatus.CANCELLED) {
-                response.setNotes(null);
-            }
-            return response;
-        });
+        return getAppointmentsForPatient(
+                patientId, doctorName, status, pageable, false, false, false
+        );
     }
 
     // Version avec le filtre Upcoming.
@@ -338,21 +336,9 @@ public class AppointmentService {
             Pageable pageable,
             boolean upcomingOnly) {
 
-        return getAppointmentsScoped(
-                patientId,
-                null,
-                doctorName,
-                status,
-                pageable,
-                upcomingOnly,
-                false,
-                false
-        ).map(response -> {
-            if (response.getStatus() == AppointmentStatus.CANCELLED) {
-                response.setNotes(null);
-            }
-            return response;
-        });
+        return getAppointmentsForPatient(
+                patientId, doctorName, status, pageable, upcomingOnly, false, false
+        );
     }
 
     // Version avec les deux filtres temporels.
@@ -365,13 +351,28 @@ public class AppointmentService {
             boolean upcomingOnly,
             boolean pendingOutcomeOnly) {
 
-        if (upcomingOnly && pendingOutcomeOnly) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Upcoming and pending outcome filters cannot be used together."
-            );
-        }
+        return getAppointmentsForPatient(
+                patientId, doctorName, status, pageable,
+                upcomingOnly, pendingOutcomeOnly, false
+        );
+    }
 
+    // Version avec les trois filtres temporels : toutes les autres y délèguent.
+    @Transactional(readOnly = true)
+    public Page<AppointmentResponse> getAppointmentsForPatient(
+            Long patientId,
+            String doctorName,
+            AppointmentStatus status,
+            Pageable pageable,
+            boolean upcomingOnly,
+            boolean pendingOutcomeOnly,
+            boolean pastOutcomeOnly) {
+
+        validateSingleTemporalFilter(
+                upcomingOnly, pendingOutcomeOnly, pastOutcomeOnly
+        );
+
+        // Limite obligatoirement les résultats au patient identifié par le serveur.
         return getAppointmentsScoped(
                 patientId,
                 null,
@@ -380,22 +381,85 @@ public class AppointmentService {
                 pageable,
                 upcomingOnly,
                 pendingOutcomeOnly,
-                false
-        ).map(response -> {
-            if (response.getStatus() == AppointmentStatus.CANCELLED) {
-                response.setNotes(null);
-            }
-            return response;
-        });
+                pastOutcomeOnly,
+                null
+        ).map(this::hideNotesForPatient);
     }
 
-    // Version avec les trois filtres temporels.
+    // Les notes d'un rendez-vous annulé ne sont pas visibles par le patient.
+    private AppointmentResponse hideNotesForPatient(AppointmentResponse response) {
+        if (response.getStatus() == AppointmentStatus.CANCELLED) {
+            response.setNotes(null);
+        }
+        return response;
+    }
+
+    // Retourne les rendez-vous associés au profil du médecin connecté,
+    // avec les filtres temporels et un filtre optionnel sur une date précise.
     @Transactional(readOnly = true)
-    public Page<AppointmentResponse> getAppointmentsForPatient(
-            Long patientId,
-            String doctorName,
+    public Page<AppointmentResponse> getAppointmentsForDoctor(
+            Long doctorId,
             AppointmentStatus status,
             Pageable pageable,
+            boolean upcomingOnly,
+            boolean pendingOutcomeOnly,
+            boolean pastOutcomeOnly,
+            LocalDate date) {
+
+        validateSingleTemporalFilter(
+                upcomingOnly, pendingOutcomeOnly, pastOutcomeOnly
+        );
+
+        // Le plus proche d'abord pour les rendez-vous à venir et l'agenda
+        // d'une journée, le plus récent d'abord pour tout le reste.
+        boolean chronological = upcomingOnly || date != null;
+
+        Pageable sortedPageable = withDefaultSort(
+                pageable,
+                chronological ? Sort.Direction.ASC : Sort.Direction.DESC
+        );
+
+        // Limite obligatoirement les résultats au médecin identifié par le serveur.
+        return getAppointmentsScoped(
+                null,
+                doctorId,
+                null,
+                status,
+                sortedPageable,
+                upcomingOnly,
+                pendingOutcomeOnly,
+                pastOutcomeOnly,
+                date
+        );
+    }
+
+    // Applique un tri par date puis heure de début si le client n'en fournit pas.
+    private Pageable withDefaultSort(
+            Pageable pageable,
+            Sort.Direction direction) {
+
+        if (pageable.getSort().isSorted()) {
+            return pageable;
+        }
+
+        Sort defaultSort = Sort.by(
+                new Sort.Order(direction, "appointmentDate"),
+                new Sort.Order(direction, "startTime")
+        );
+
+        if (pageable.isUnpaged()) {
+            return Pageable.unpaged(defaultSort);
+        }
+
+        return PageRequest.of(
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                defaultSort
+        );
+    }
+
+    // Refuse la combinaison de plusieurs filtres temporels.
+    private void validateSingleTemporalFilter(
             boolean upcomingOnly,
             boolean pendingOutcomeOnly,
             boolean pastOutcomeOnly) {
@@ -410,37 +474,6 @@ public class AppointmentService {
                     "Only one temporal filter can be active at a time."
             );
         }
-
-        return getAppointmentsScoped(
-                patientId,
-                null,
-                doctorName,
-                status,
-                pageable,
-                upcomingOnly,
-                pendingOutcomeOnly,
-                pastOutcomeOnly
-        ).map(response -> {
-            if (response.getStatus() == AppointmentStatus.CANCELLED) {
-                response.setNotes(null);
-            }
-            return response;
-        });
-    }
-
-
-    // Retourne les rendez-vous associés au profil du médecin connecté.
-    @Transactional(readOnly = true)
-    public Page<AppointmentResponse> getAppointmentsForDoctor(
-            Long doctorId,
-            AppointmentStatus status,
-            Pageable pageable
-            ) {
-
-        // Limite obligatoirement les résultats au médecin identifié par le serveur.
-        return getAppointmentsScoped(
-                null, doctorId, null, status, pageable, false, false, false
-        );
     }
 
     private Predicate buildTemporalPredicate(
@@ -493,21 +526,29 @@ public class AppointmentService {
         return cb.conjunction();
     }
 
-    private Specification<Appointment> buildPatientStatisticsSpecification(
-            Long patientId,
+    /**
+     * Construit les critères de comptage des statistiques.
+     * ownerField vaut "patient" ou "doctor" : les résultats sont toujours
+     * limités au profil identifié par le serveur.
+     */
+    private Specification<Appointment> buildStatisticsSpecification(
+            String ownerField,
+            Long ownerId,
             boolean upcomingOnly,
             boolean pendingOutcomeOnly,
             AppointmentStatus status,
+            LocalDate date,
+            boolean excludeCancelled,
             LocalDateTime now
     ) {
         return (root, query, criteriaBuilder) -> {
 
             List<Predicate> predicates = new ArrayList<>();
 
-            // Toujours limiter les statistiques au patient concerné.
+            // Toujours limiter les statistiques au profil concerné.
             predicates.add(criteriaBuilder.equal(
-                    root.get("patient").get("id"),
-                    patientId
+                    root.get(ownerField).get("id"),
+                    ownerId
             ));
 
             // Appliquer éventuellement un filtre de statut.
@@ -515,6 +556,22 @@ public class AppointmentService {
                 predicates.add(criteriaBuilder.equal(
                         root.get("status"),
                         status
+                ));
+            }
+
+            // Limiter éventuellement à une date précise.
+            if (date != null) {
+                predicates.add(criteriaBuilder.equal(
+                        root.get("appointmentDate"),
+                        date
+                ));
+            }
+
+            // Exclure éventuellement les rendez-vous annulés.
+            if (excludeCancelled) {
+                predicates.add(criteriaBuilder.notEqual(
+                        root.get("status"),
+                        AppointmentStatus.CANCELLED
                 ));
             }
 
@@ -545,34 +602,25 @@ public class AppointmentService {
 
         // 1. Rendez-vous futurs encore planifiés.
         long scheduledAppointments = appointmentRepository.count(
-                buildPatientStatisticsSpecification(
-                        patientId,
-                        true,
-                        false,
-                        null,
-                        now
+                buildStatisticsSpecification(
+                        "patient", patientId,
+                        true, false, null, null, false, now
                 )
         );
 
         // 2. Rendez-vous passés sans résultat enregistré.
         long pendingOutcomes = appointmentRepository.count(
-                buildPatientStatisticsSpecification(
-                        patientId,
-                        false,
-                        true,
-                        null,
-                        now
+                buildStatisticsSpecification(
+                        "patient", patientId,
+                        false, true, null, null, false, now
                 )
         );
 
         // 3. Tous les rendez-vous annulés.
         long cancelledAppointments = appointmentRepository.count(
-                buildPatientStatisticsSpecification(
-                        patientId,
-                        false,
-                        false,
-                        AppointmentStatus.CANCELLED,
-                        now
+                buildStatisticsSpecification(
+                        "patient", patientId,
+                        false, false, AppointmentStatus.CANCELLED, null, false, now
                 )
         );
 
@@ -580,6 +628,54 @@ public class AppointmentService {
                 scheduledAppointments,
                 pendingOutcomes,
                 cancelledAppointments
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public DoctorAppointmentStatisticsResponse getDoctorAppointmentStatistics(
+            Long doctorId
+    ) {
+
+        // Capturer une seule fois la date et l'heure actuelles.
+        LocalDateTime now = LocalDateTime.now();
+
+        // 1. Rendez-vous du jour, hors annulations.
+        long todayAppointments = appointmentRepository.count(
+                buildStatisticsSpecification(
+                        "doctor", doctorId,
+                        false, false, null, now.toLocalDate(), true, now
+                )
+        );
+
+        // 2. Rendez-vous futurs encore planifiés.
+        long upcomingAppointments = appointmentRepository.count(
+                buildStatisticsSpecification(
+                        "doctor", doctorId,
+                        true, false, null, null, false, now
+                )
+        );
+
+        // 3. Rendez-vous passés sans résultat enregistré.
+        long pendingOutcomes = appointmentRepository.count(
+                buildStatisticsSpecification(
+                        "doctor", doctorId,
+                        false, true, null, null, false, now
+                )
+        );
+
+        // 4. Tous les rendez-vous terminés.
+        long completedAppointments = appointmentRepository.count(
+                buildStatisticsSpecification(
+                        "doctor", doctorId,
+                        false, false, AppointmentStatus.COMPLETED, null, false, now
+                )
+        );
+
+        return new DoctorAppointmentStatisticsResponse(
+                todayAppointments,
+                upcomingAppointments,
+                pendingOutcomes,
+                completedAppointments
         );
     }
 
@@ -592,7 +688,8 @@ public class AppointmentService {
             Pageable pageable,
             boolean upcomingOnly,
             boolean pendingOutcomeOnly,
-            boolean pastOutcomeOnly) {
+            boolean pastOutcomeOnly,
+            LocalDate date) {
 
         // Prépare une recherche dynamique pour la table appointment.
         Specification<Appointment> specification = (root, query, criteriaBuilder) -> {
@@ -620,6 +717,14 @@ public class AppointmentService {
                 predicates.add(criteriaBuilder.equal(
                         root.get("status"),
                         status
+                ));
+            }
+
+            // Limite les résultats à une date précise si elle est fournie.
+            if (date != null) {
+                predicates.add(criteriaBuilder.equal(
+                        root.get("appointmentDate"),
+                        date
                 ));
             }
 
@@ -859,10 +964,8 @@ public class AppointmentService {
 
         AppointmentResponse response = toResponse(appointment);
 
-        // Les notes d'un rendez-vous annulé ne sont pas visibles par le patient.
-        if (role == UserRole.PATIENT
-                && appointment.getStatus() == AppointmentStatus.CANCELLED) {
-            response.setNotes(null);
+        if (role == UserRole.PATIENT) {
+            hideNotesForPatient(response);
         }
 
         return response;
@@ -898,13 +1001,34 @@ public class AppointmentService {
             );
         }
 
-        // Les résultats autorisés sont COMPLETED et NO_SHOW.
+        // Les statuts autorisés sont COMPLETED, NO_SHOW et CANCELLED.
         if (newStatus != AppointmentStatus.COMPLETED
-                && newStatus != AppointmentStatus.NO_SHOW) {
+                && newStatus != AppointmentStatus.NO_SHOW
+                && newStatus != AppointmentStatus.CANCELLED) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Only COMPLETED or NO_SHOW status is allowed."
+                    "Only COMPLETED, NO_SHOW or CANCELLED status is allowed."
             );
+        }
+
+        boolean isCancellation = newStatus == AppointmentStatus.CANCELLED;
+
+        if (isCancellation) {
+            // Les administrateurs annulent via DELETE /api/appointments/{id}.
+            if (role != UserRole.DOCTOR) {
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Only doctors can cancel appointments through this endpoint."
+                );
+            }
+
+            // Le motif est obligatoire : il est communiqué au patient.
+            if (changeReason == null || changeReason.isBlank()) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "A reason is required to cancel an appointment."
+                );
+            }
         }
 
         // Recherche le rendez-vous.
@@ -937,7 +1061,34 @@ public class AppointmentService {
                 previousStatus == AppointmentStatus.COMPLETED
                         || previousStatus == AppointmentStatus.NO_SHOW;
 
-        if (isAdministrativeCorrection) {
+        if (isCancellation) {
+
+            // Seuls les rendez-vous planifiés peuvent être annulés.
+            if (previousStatus != AppointmentStatus.SCHEDULED) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Only scheduled appointments can be cancelled."
+                );
+            }
+
+            // Un rendez-vous déjà commencé ne peut plus être annulé.
+            LocalDateTime appointmentStart = LocalDateTime.of(
+                    appointment.getAppointmentDate(),
+                    appointment.getStartTime()
+            );
+
+            if (!appointmentStart.isAfter(LocalDateTime.now())) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Appointments that have already started cannot be cancelled."
+                );
+            }
+
+            // Conserve le motif sur le rendez-vous pour l'afficher au patient.
+            changeReason = changeReason.trim();
+            appointment.setCancellationReason(changeReason);
+
+        } else if (isAdministrativeCorrection) {
 
             // Seul un administrateur peut corriger un résultat déjà enregistré.
             if (role != UserRole.ADMIN) {
@@ -1045,6 +1196,16 @@ public class AppointmentService {
             );
         }
 
+        // Un médecin ne peut modifier que les notes de ses propres rendez-vous.
+        if (role == UserRole.DOCTOR
+                && !requestingDoctor.getId().equals(
+                appointment.getDoctor().getId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Doctors can only update notes on their own appointments."
+            );
+        }
+
         // Un rendez-vous annulé ne peut plus recevoir de notes.
         if (appointment.getStatus() == AppointmentStatus.CANCELLED) {
             throw new ResponseStatusException(
@@ -1064,14 +1225,26 @@ public class AppointmentService {
 
     /**
      * Cancels a scheduled appointment.
-     * The requester role and patient profile must be resolved
+     * The requester and patient profile must be resolved
      * by the trusted backend authentication layer.
+     * The reason is optional and recorded in the status history.
      */
     public AppointmentResponse cancelAppointment(
             Long id,
-            UserRole requesterRole,
-            Patient requestingPatient
+            User requester,
+            Patient requestingPatient,
+            String reason
     ) {
+        // Vérifie que l'utilisateur authentifié existe.
+        if (requester == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "An authenticated user is required."
+            );
+        }
+
+        UserRole requesterRole = requester.getRole();
+
         // Seuls les patients et les administrateurs peuvent annuler.
         if (requesterRole != UserRole.PATIENT
                 && requesterRole != UserRole.ADMIN) {
@@ -1130,11 +1303,27 @@ public class AppointmentService {
             }
         }
 
+        // Un motif vide est traité comme absent.
+        String cancellationReason =
+                reason == null || reason.isBlank() ? null : reason.trim();
+
         // Conserve le rendez-vous en base avec le statut CANCELLED.
         appointment.setStatus(AppointmentStatus.CANCELLED);
+        appointment.setCancellationReason(cancellationReason);
 
         Appointment cancelledAppointment =
                 appointmentRepository.save(appointment);
+
+        // Enregistre l'annulation dans l'historique des statuts.
+        appointmentStatusHistoryRepository.save(
+                new AppointmentStatusHistory(
+                        appointment,
+                        AppointmentStatus.SCHEDULED,
+                        AppointmentStatus.CANCELLED,
+                        requester,
+                        cancellationReason
+                )
+        );
 
         return toResponse(cancelledAppointment);
     }

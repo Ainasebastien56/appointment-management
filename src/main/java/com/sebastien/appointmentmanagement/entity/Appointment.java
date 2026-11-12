@@ -38,6 +38,11 @@ public class Appointment {
     @Column(length = 2000)
     private String notes;
 
+    // Motif de l'annulation, visible par le patient (obligatoire pour un médecin,
+    // facultatif pour un patient ou un administrateur).
+    @Column(name = "cancellation_reason", length = 1000)
+    private String cancellationReason;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -144,6 +149,14 @@ public class Appointment {
 
     public void setNotes(String notes) {
         this.notes = notes;
+    }
+
+    public String getCancellationReason() {
+        return cancellationReason;
+    }
+
+    public void setCancellationReason(String cancellationReason) {
+        this.cancellationReason = cancellationReason;
     }
 
     @PrePersist

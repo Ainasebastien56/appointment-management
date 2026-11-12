@@ -41,6 +41,7 @@ public class AppointmentController {
             @RequestParam(defaultValue = "false") boolean upcomingOnly,
             @RequestParam(defaultValue = "false") boolean pendingOutcomeOnly,
             @RequestParam(defaultValue = "false") boolean pastOutcomeOnly,
+            @RequestParam(required = false) LocalDate date,
             Pageable pageable,
             Authentication authentication) {
 
@@ -70,7 +71,13 @@ public class AppointmentController {
 
                 // Ne retourne que les rendez-vous associés à ce médecin.
                 return appointmentService.getAppointmentsForDoctor(
-                        doctor.getId(), status, pageable
+                        doctor.getId(),
+                        status,
+                        pageable,
+                        upcomingOnly,
+                        pendingOutcomeOnly,
+                        pastOutcomeOnly,
+                        date
                 );
 
             default:
@@ -103,6 +110,30 @@ public class AppointmentController {
         // Calculer les statistiques de ce patient.
         return appointmentService.getPatientAppointmentStatistics(
                 patient.getId()
+        );
+    }
+
+    @GetMapping("/my-doctor-statistics")
+    public DoctorAppointmentStatisticsResponse getMyDoctorAppointmentStatistics(
+            Authentication authentication
+    ) {
+        // Récupérer l'utilisateur authentifié.
+        User user = currentUserService.requireUser(authentication.getName());
+
+        // Cet endpoint est réservé aux médecins.
+        if (user.getRole() != UserRole.DOCTOR) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Only doctors can access doctor appointment statistics."
+            );
+        }
+
+        // Récupérer le profil médecin associé au compte connecté.
+        Doctor doctor = currentUserService.requireDoctorProfile(user);
+
+        // Calculer les statistiques de ce médecin uniquement.
+        return appointmentService.getDoctorAppointmentStatistics(
+                doctor.getId()
         );
     }
 
@@ -265,6 +296,8 @@ public class AppointmentController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void cancelAppointment(
             @PathVariable Long id,
+            // Corps facultatif : permet de fournir un motif d'annulation.
+            @Valid @RequestBody(required = false) CancelAppointmentRequest request,
             Authentication authentication
     ) {
         // Récupère le compte connecté depuis le JWT.
@@ -286,8 +319,9 @@ public class AppointmentController {
         // Applique les règles métier : propriétaire, statut et délai de deux heures.
         appointmentService.cancelAppointment(
                 id,
-                user.getRole(),
-                patient
+                user,
+                patient,
+                request == null ? null : request.getReason()
         );
     }
 
