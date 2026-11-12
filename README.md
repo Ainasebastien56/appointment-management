@@ -1,43 +1,45 @@
-# Appointment Management API
+# Appointment Management
 
-A RESTful API for managing medical appointments, built with Java, Spring Boot, Spring Data JPA, and PostgreSQL.
+A full-stack application for managing medical appointments: a REST API built with Java 21, Spring Boot and PostgreSQL, and an Angular frontend.
 
-## Overview
-
-The Appointment Management API provides endpoints to create, retrieve, update, delete, and filter medical appointments. It is designed as a backend project to practice REST API development, data persistence, request validation, exception handling, and automated testing.
+Patients register, browse doctors' available slots and book appointments. Doctors manage the outcome and notes of their appointments. Administrators create doctor accounts, define doctor schedules and manage all appointments.
 
 ## Tech Stack
 
-- **Java 21**
-- **Spring Boot 4.1.1**
-- **Spring Web MVC** — REST endpoints
-- **Spring Data JPA** — database access and persistence
-- **PostgreSQL** — relational database
-- **Jakarta Bean Validation** — request validation
-- **Maven Wrapper** — project build and dependency management
-- **JUnit and Spring Boot testing support** — automated tests
+**Backend**
 
-## Current Features
+- Java 21, Spring Boot 4.1
+- Spring Web MVC, Spring Data JPA, Jakarta Bean Validation
+- Spring Security with OAuth2 Resource Server (JWT signed with HS256)
+- PostgreSQL
+- JUnit, Mockito and Spring Boot test support
+- Maven Wrapper
 
-- Create a medical appointment
-- Retrieve an appointment by ID
-- Retrieve appointments using pagination
-- Filter appointments by doctor name and status
-- Update an existing appointment
-- Delete an appointment
-- Validate incoming requests
-- Handle application errors through a global exception handler
-- Test controller, service, and repository layers
+**Frontend** (in [`frontend/`](frontend/))
+
+- Angular 21 (standalone components, lazy-loaded routes)
+- Tailwind CSS 4
+- Vitest
+
+## Features
+
+- **Authentication**: patient self-registration and login. The API returns a JWT that must be sent as a `Bearer` token on every other request.
+- **Roles**: `PATIENT`, `DOCTOR` and `ADMIN`. Registration always creates a patient account; users cannot choose their role. Doctor accounts are created by an administrator.
+- **Doctor schedules**: weekly availability per doctor, plus date-specific exceptions (day off or custom hours).
+- **Booking**: appointments are 30-minute slots aligned on the doctor's schedule. The API computes available slots and rejects conflicting bookings.
+- **Appointment lifecycle**: statuses `SCHEDULED`, `COMPLETED`, `NO_SHOW` and `CANCELLED`. Every status change is recorded in a status history, with an optional reason.
+- **Cancellation**: appointments are never deleted, only cancelled, so their history is kept. Patients cannot cancel less than 2 hours before the appointment starts.
+- **Doctor notes** on appointments.
+- **Patient statistics** for the patient dashboard.
+- **Role-based dashboards** in the frontend for patients, doctors and administrators, with light and dark themes.
 
 ## Getting Started
 
 ### Prerequisites
 
-Make sure you have the following installed:
-
 - JDK 21
 - PostgreSQL
-- Git
+- Node.js and npm (for the frontend)
 
 The project includes the Maven Wrapper, so a separate Maven installation is not required.
 
@@ -48,144 +50,159 @@ git clone https://github.com/Ainasebastien56/appointment-management.git
 cd appointment-management
 ```
 
-### 2. Create the PostgreSQL database
-
-Create a database named `appointment_management`.
-
-For example, using `psql`:
+### 2. Create the databases
 
 ```sql
 CREATE DATABASE appointment_management;
+CREATE DATABASE appointment_management_test; -- used by the tests
 ```
+
+The schema is created and updated automatically by Hibernate.
 
 ### 3. Configure environment variables
 
-The application reads its database connection settings from environment variables.
+The backend reads its settings from environment variables, or from a `.env` file at the project root (this file is ignored by Git).
 
-| Variable | Default / Example |
-|---|---|
-| `DB_URL` | `jdbc:postgresql://localhost:5432/appointment_management` |
-| `DB_USERNAME` | `postgres` |
-| `DB_PASSWORD` | Your local PostgreSQL password |
+| Variable | Required | Description |
+|---|---|---|
+| `DB_USERNAME` | No (default `postgres`) | PostgreSQL user |
+| `DB_PASSWORD` | Yes | PostgreSQL password |
+| `JWT_SECRET_BASE64` | Yes | Base64-encoded key used to sign JWTs. It must decode to at least 32 bytes. |
+| `BOOTSTRAP_ADMIN_EMAIL` | No | Email of the administrator account created at startup |
+| `BOOTSTRAP_ADMIN_PASSWORD` | No | Password of that administrator account |
 
-On Windows PowerShell, set the variables in your current terminal session:
+Example `.env` file:
 
-```powershell
-$env:DB_URL = "jdbc:postgresql://localhost:5432/appointment_management"
-$env:DB_USERNAME = "postgres"
-$env:DB_PASSWORD = "your-local-password"
+```properties
+DB_USERNAME=postgres
+DB_PASSWORD=your-local-password
+JWT_SECRET_BASE64=your-base64-secret
+BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+BOOTSTRAP_ADMIN_PASSWORD=change-me
 ```
 
-Replace the example password with your own local database password. Never commit credentials to Git.
+To generate a secret in PowerShell:
 
-### 4. Run the application
+```powershell
+[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))
+```
 
-On Windows:
+If both bootstrap variables are set, an administrator account is created at startup when it does not already exist. This is how the first administrator is created.
+
+Tokens expire after 60 minutes by default (`app.security.jwt.expiration-minutes`).
+
+### 4. Run the backend
 
 ```powershell
 .\mvnw.cmd spring-boot:run
 ```
 
-The API will normally be available at:
+On macOS or Linux, use `./mvnw` instead of `.\mvnw.cmd`. The API is available at `http://localhost:8080`.
 
-`http://localhost:8080`
+### 5. Run the frontend
 
-### 5. Run the tests
+```powershell
+cd frontend
+npm install
+npm start
+```
 
-On Windows:
+The application is available at `http://localhost:4200`. This is the only origin allowed by the API's CORS configuration.
+
+### 6. Run the tests
+
+Backend (requires PostgreSQL and the `appointment_management_test` database):
 
 ```powershell
 .\mvnw.cmd test
+.\mvnw.cmd test -Dtest=AppointmentServiceTest   # a single test class
 ```
 
-The project currently includes automated tests for the controller, service, and repository layers.
+Frontend:
+
+```powershell
+cd frontend
+npm test
+```
 
 ## API Endpoints
 
-Base path: `/api/appointments`
+All endpoints except `/api/auth/**` require an `Authorization: Bearer <token>` header. What an endpoint returns or allows depends on the role of the authenticated user.
+
+### Authentication
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/appointments` | List appointments with pagination and optional filters |
-| `GET` | `/api/appointments/{id}` | Retrieve an appointment by ID |
-| `POST` | `/api/appointments` | Create an appointment |
-| `PUT` | `/api/appointments/{id}` | Update an existing appointment |
-| `DELETE` | `/api/appointments/{id}` | Delete an appointment |
+| `POST` | `/api/auth/register` | Create a patient account |
+| `POST` | `/api/auth/login` | Log in and receive a JWT |
 
-### Filtering and Pagination
+### Appointments
 
-The listing endpoint supports the optional `doctorName` and `status` query parameters, along with Spring Data pagination parameters.
+| Method | Endpoint | Roles | Description |
+|---|---|---|---|
+| `GET` | `/api/appointments` | All | List appointments (paginated). Admins see all appointments, patients and doctors see their own. |
+| `GET` | `/api/appointments/{id}` | All | Get one appointment the user has access to |
+| `GET` | `/api/appointments/available-slots?date=&doctorId=` | Patient | List available 30-minute slots for a date |
+| `GET` | `/api/appointments/my-statistics` | Patient | Statistics on the patient's appointments |
+| `POST` | `/api/appointments` | Patient | Book an appointment |
+| `PUT` | `/api/appointments/{id}` | Patient (own), Admin | Update an appointment |
+| `PATCH` | `/api/appointments/{id}/status` | Doctor (own), Admin | Change the status, with an optional reason |
+| `PATCH` | `/api/appointments/{id}/notes` | Doctor (own), Admin | Update the notes |
+| `DELETE` | `/api/appointments/{id}` | Patient (own), Admin | Cancel an appointment (it is not deleted) |
 
-Example:
+`GET /api/appointments` accepts optional filters (`status`, `doctorName`, `doctorLastName`, `upcomingOnly`, `pendingOutcomeOnly`, `pastOutcomeOnly`) and Spring Data pagination parameters (`page`, `size`, `sort`).
 
-```http
-GET /api/appointments?doctorName=Dr%20Smith&status=SCHEDULED&page=0&size=10
-```
-
-Pagination parameters include `page`, `size`, and supported `sort` expressions.
-
-### Example Request
-
-Create an appointment using `POST /api/appointments`:
+Example booking request (`POST /api/appointments`):
 
 ```json
 {
-  "patientName": "John Doe",
-  "doctorName": "Dr. Smith",
-  "appointmentDate": "2026-11-15",
-  "status": "SCHEDULED"
+  "doctorId": 2,
+  "appointmentDate": "2026-11-20",
+  "startTime": "09:30",
+  "type": "CONSULTATION",
+  "reason": "Annual check-up"
 }
 ```
 
-The request requires non-blank patient and doctor names, a non-null appointment date, and a non-null status.
+`type` is `CONSULTATION` or `FOLLOW_UP`.
 
-Available statuses in the current implementation:
+### Doctors
 
-- `SCHEDULED`
-- `COMPLETED`
-- `CANCELLED`
+| Method | Endpoint | Roles | Description |
+|---|---|---|---|
+| `GET` | `/api/doctors` | All | List doctors |
+
+### Administration
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/admin/doctors` | Create a doctor account and profile |
+| `POST` | `/api/admin/doctors/{doctorId}/schedules` | Add a weekly availability (`dayOfWeek`, `startTime`, `endTime`) |
+| `POST` | `/api/admin/doctors/{doctorId}/schedule-exceptions` | Add a schedule exception (`DAY_OFF` or `CUSTOM_HOURS`) for a date |
+| `POST` | `/api/admin/appointments/{patientId}` | Book an appointment on behalf of a patient |
 
 ## Project Structure
 
 ```text
 appointment-management/
-├── src/
-│   ├── main/
-│   │   ├── java/
-│   │   │   └── com/sebastien/appointmentmanagement/
-│   │   │       ├── controller/
-│   │   │       ├── dto/
-│   │   │       ├── entity/
-│   │   │       ├── exception/
-│   │   │       ├── repository/
-│   │   │       └── service/
-│   │   └── resources/
-│   │       └── application.properties
-│   └── test/
-│       ├── java/
-│       └── resources/
-├── .mvn/
-├── mvnw
-├── mvnw.cmd
+├── src/main/java/com/sebastien/appointmentmanagement/
+│   ├── config/       # security, JWT, CORS, admin bootstrap
+│   ├── controller/   # REST controllers
+│   ├── dto/          # request and response objects
+│   ├── entity/       # JPA entities and enums
+│   ├── exception/    # global exception handling
+│   ├── repository/   # Spring Data repositories
+│   └── service/      # business rules
+├── src/test/         # controller, service and repository tests
+├── frontend/         # Angular application
+├── mvnw, mvnw.cmd
 └── pom.xml
 ```
 
-## Development Roadmap
+## Roadmap
 
-Planned improvements include:
-
-- Refactoring the domain model to introduce dedicated `Patient` and `Doctor` entities
-- Implementing doctor availability and appointment scheduling rules
-- Preventing conflicting bookings
-- Adding authentication and role-based authorization
-- Developing an Angular frontend
-- Preparing the application for deployment
-
-These items are planned improvements and are not all implemented in the current version.
-
-## Project Status
-
-The backend is an ongoing learning and portfolio project. Its current REST API has automated tests for the main application layers. Further development will focus on domain modeling, business rules, security, and frontend integration.
+- Let administrators create additional administrator accounts from the application
+- Prepare the application for deployment
 
 ## License
 
