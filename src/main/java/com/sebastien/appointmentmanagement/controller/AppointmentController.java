@@ -1,9 +1,7 @@
 
 package com.sebastien.appointmentmanagement.controller;
 
-import com.sebastien.appointmentmanagement.dto.AppointmentRequest;
-import com.sebastien.appointmentmanagement.dto.AppointmentResponse;
-import com.sebastien.appointmentmanagement.dto.AvailableSlotResponse;
+import com.sebastien.appointmentmanagement.dto.*;
 import com.sebastien.appointmentmanagement.entity.*;
 import com.sebastien.appointmentmanagement.service.AppointmentService;
 import com.sebastien.appointmentmanagement.service.CurrentUserService;
@@ -37,8 +35,12 @@ public class AppointmentController {
 
     @GetMapping
     public Page<AppointmentResponse> getAppointments(
+            @RequestParam(required = false) String doctorName,
             @RequestParam(required = false) String doctorLastName,
             @RequestParam(required = false) AppointmentStatus status,
+            @RequestParam(defaultValue = "false") boolean upcomingOnly,
+            @RequestParam(defaultValue = "false") boolean pendingOutcomeOnly,
+            @RequestParam(defaultValue = "false") boolean pastOutcomeOnly,
             Pageable pageable,
             Authentication authentication) {
 
@@ -59,7 +61,7 @@ public class AppointmentController {
 
                 // Ne retourne que les rendez-vous appartenant à ce patient.
                 return appointmentService.getAppointmentsForPatient(
-                        patient.getId(), doctorLastName, status, pageable
+                        patient.getId(), doctorName, status, pageable, upcomingOnly, pendingOutcomeOnly, pastOutcomeOnly
                 );
 
             case DOCTOR:
@@ -78,6 +80,30 @@ public class AppointmentController {
                         "This account cannot access appointments."
                 );
         }
+    }
+
+    @GetMapping("/my-statistics")
+    public AppointmentStatisticsResponse getMyAppointmentStatistics(
+            Authentication authentication
+    ) {
+        // Récupérer l'utilisateur authentifié.
+        User user = currentUserService.requireUser(authentication.getName());
+
+        // Cet endpoint est réservé aux patients.
+        if (user.getRole() != UserRole.PATIENT) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Only patients can access their appointment statistics."
+            );
+        }
+
+        // Récupérer le profil patient associé au compte connecté.
+        Patient patient = currentUserService.requirePatientProfile(user);
+
+        // Calculer les statistiques de ce patient.
+        return appointmentService.getPatientAppointmentStatistics(
+                patient.getId()
+        );
     }
 
     @PostMapping
@@ -170,6 +196,67 @@ public class AppointmentController {
                 doctorId,
                 date,
                 patient
+        );
+    }
+
+    @PatchMapping("/{id}/status")
+    public AppointmentResponse updateAppointmentStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateAppointmentStatusRequest request,
+            Authentication authentication
+    ) {
+        // Identifie l'utilisateur authentifié.
+        User user = currentUserService.requireUser(authentication.getName());
+
+        Doctor doctor = null;
+
+        // Récupère le véritable profil du médecin si nécessaire.
+        if (user.getRole() == UserRole.DOCTOR) {
+            doctor = currentUserService.requireDoctorProfile(user);
+        } else if (user.getRole() != UserRole.ADMIN) {
+
+            // Les patients ne peuvent pas modifier le résultat d'un rendez-vous.
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Only doctors and administrators can update appointment status."
+            );
+        }
+
+        // Délègue les vérifications métier et l'enregistrement de l'historique au service.
+        return appointmentService.updateAppointmentStatus(
+                id,
+                request.getStatus(),
+                user,
+                doctor,
+                request.getChangeReason()
+        );
+    }
+
+
+    @PatchMapping("/{id}/notes")
+    public AppointmentResponse updateAppointmentNotes(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateAppointmentNotesRequest request,
+            Authentication authentication
+    ) {
+        User user = currentUserService.requireUser(authentication.getName());
+
+        Doctor doctor = null;
+
+        if (user.getRole() == UserRole.DOCTOR) {
+            doctor = currentUserService.requireDoctorProfile(user);
+        } else if (user.getRole() != UserRole.ADMIN) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Only doctors and administrators can update appointment notes."
+            );
+        }
+
+        return appointmentService.updateAppointmentNotes(
+                id,
+                request.getNotes(),
+                user,
+                doctor
         );
     }
 

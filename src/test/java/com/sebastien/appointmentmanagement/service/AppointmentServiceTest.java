@@ -5,10 +5,7 @@ import com.sebastien.appointmentmanagement.dto.AppointmentRequest;
 import com.sebastien.appointmentmanagement.dto.AppointmentResponse;
 import com.sebastien.appointmentmanagement.entity.*;
 import com.sebastien.appointmentmanagement.exception.AppointmentNotFoundException;
-import com.sebastien.appointmentmanagement.repository.AppointmentRepository;
-import com.sebastien.appointmentmanagement.repository.DoctorRepository;
-import com.sebastien.appointmentmanagement.repository.DoctorScheduleExceptionRepository;
-import com.sebastien.appointmentmanagement.repository.DoctorScheduleRepository;
+import com.sebastien.appointmentmanagement.repository.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -73,7 +70,8 @@ class AppointmentServiceTest {
                 appointmentRepository,
                 doctorRepository,
                 scheduleRepository,
-                exceptionRepository
+                exceptionRepository,
+                mock(AppointmentStatusHistoryRepository.class)
         );
     }
 
@@ -1880,6 +1878,12 @@ class AppointmentServiceTest {
         AppointmentService service =
                 createService(repository, doctorRepository);
 
+        User admin = new User(
+                "admin@example.com",
+                "test-password",
+                UserRole.ADMIN
+        );
+
         Appointment appointment = createAppointment(
                 createPatient(),
                 createDoctor("Dr", "Martin"),
@@ -1896,7 +1900,10 @@ class AppointmentServiceTest {
         AppointmentResponse response =
                 service.updateAppointmentStatus(
                         1L,
-                        AppointmentStatus.COMPLETED
+                        AppointmentStatus.COMPLETED,
+                        admin,
+                        null,
+                        null
                 );
 
         assertEquals(
@@ -1907,7 +1914,6 @@ class AppointmentServiceTest {
         verify(repository).save(appointment);
     }
 
-
     @Test
     void shouldRejectReopeningCompletedAppointment() {
         AppointmentRepository repository = createAppointmentRepository();
@@ -1915,6 +1921,12 @@ class AppointmentServiceTest {
 
         AppointmentService service =
                 createService(repository, doctorRepository);
+
+        User admin = new User(
+                "admin@example.com",
+                "test-password",
+                UserRole.ADMIN
+        );
 
         Appointment appointment = createAppointment(
                 createPatient(),
@@ -1926,17 +1938,21 @@ class AppointmentServiceTest {
         when(repository.findById(1L))
                 .thenReturn(Optional.of(appointment));
 
-        assertThrows(
-                IllegalArgumentException.class,
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
                 () -> service.updateAppointmentStatus(
                         1L,
-                        AppointmentStatus.SCHEDULED
+                        AppointmentStatus.SCHEDULED,
+                        admin,
+                        null,
+                        null
                 )
         );
 
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+
         verify(repository, never()).save(any(Appointment.class));
     }
-
 
     @Test
     void shouldRejectReopeningCancelledAppointment() {
@@ -1945,6 +1961,12 @@ class AppointmentServiceTest {
 
         AppointmentService service =
                 createService(repository, doctorRepository);
+
+        User admin = new User(
+                "admin@example.com",
+                "test-password",
+                UserRole.ADMIN
+        );
 
         Appointment appointment = createAppointment(
                 createPatient(),
@@ -1956,17 +1978,21 @@ class AppointmentServiceTest {
         when(repository.findById(2L))
                 .thenReturn(Optional.of(appointment));
 
-        assertThrows(
-                IllegalArgumentException.class,
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
                 () -> service.updateAppointmentStatus(
                         2L,
-                        AppointmentStatus.SCHEDULED
+                        AppointmentStatus.SCHEDULED,
+                        admin,
+                        null,
+                        null
                 )
         );
 
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+
         verify(repository, never()).save(any(Appointment.class));
     }
-
 
     @Test
     void shouldReturnAllAppointments() {
@@ -2158,4 +2184,225 @@ class AppointmentServiceTest {
 
         verify(repository).findAll(pageable);
     }
+
+
+    @Test
+    void shouldAssignDoctorWithFewestScheduledAppointments() {
+        AppointmentRepository repository =
+                createAppointmentRepository();
+        DoctorRepository doctorRepository =
+                createDoctorRepository();
+
+        DoctorScheduleRepository scheduleRepository =
+                mock(DoctorScheduleRepository.class);
+        DoctorScheduleExceptionRepository exceptionRepository =
+                mock(DoctorScheduleExceptionRepository.class);
+
+        AppointmentService service = createService(
+                repository,
+                doctorRepository,
+                scheduleRepository,
+                exceptionRepository
+        );
+
+        Patient patient = createPatient();
+        LocalDate appointmentDate = LocalDate.now().plusDays(7);
+        LocalTime startTime = LocalTime.of(10, 0);
+
+        // Marie : doctorId = 1
+        Doctor marie = mock(Doctor.class);
+        when(marie.getId()).thenReturn(1L);
+        when(marie.getFirstName()).thenReturn("Marie");
+        when(marie.getLastName()).thenReturn("Rabe");
+
+        // Paul : doctorId = 2
+        Doctor paul = mock(Doctor.class);
+        when(paul.getId()).thenReturn(2L);
+        when(paul.getFirstName()).thenReturn("Paul");
+        when(paul.getLastName()).thenReturn("Dupont");
+
+        when(doctorRepository.findAll())
+                .thenReturn(List.of(marie, paul));
+
+        when(doctorRepository.findById(1L))
+                .thenReturn(Optional.of(marie));
+        when(doctorRepository.findById(2L))
+                .thenReturn(Optional.of(paul));
+
+        // Les deux médecins travaillent ce jour-là.
+        when(scheduleRepository.findByDoctor_IdAndDayOfWeek(
+                1L, appointmentDate.getDayOfWeek()
+        )).thenReturn(List.of(new DoctorSchedule(
+                marie,
+                appointmentDate.getDayOfWeek(),
+                LocalTime.of(9, 0),
+                LocalTime.of(12, 0)
+        )));
+
+        when(scheduleRepository.findByDoctor_IdAndDayOfWeek(
+                2L, appointmentDate.getDayOfWeek()
+        )).thenReturn(List.of(new DoctorSchedule(
+                paul,
+                appointmentDate.getDayOfWeek(),
+                LocalTime.of(9, 0),
+                LocalTime.of(12, 0)
+        )));
+
+        when(exceptionRepository.findByDoctor_IdAndDate(
+                1L, appointmentDate
+        )).thenReturn(List.of());
+        when(exceptionRepository.findByDoctor_IdAndDate(
+                2L, appointmentDate
+        )).thenReturn(List.of());
+
+        // Aucun conflit de rendez-vous pour le créneau demandé.
+        when(repository
+                .existsByDoctor_IdAndAppointmentDateAndStatusAndStartTimeLessThanAndEndTimeGreaterThan(
+                        any(), any(), any(), any(), any()
+                )).thenReturn(false);
+
+        when(repository
+                .existsByPatientAndAppointmentDateAndStatusAndStartTimeLessThanAndEndTimeGreaterThan(
+                        any(), any(), any(), any(), any()
+                )).thenReturn(false);
+
+        // Marie a 2 rendez-vous ; Paul n'en a aucun.
+        when(repository.countByDoctor_IdAndAppointmentDateAndStatus(
+                1L, appointmentDate, AppointmentStatus.SCHEDULED
+        )).thenReturn(2L);
+
+        when(repository.countByDoctor_IdAndAppointmentDateAndStatus(
+                2L, appointmentDate, AppointmentStatus.SCHEDULED
+        )).thenReturn(0L);
+
+        AppointmentRequest request = createRequest(
+                null,
+                appointmentDate,
+                startTime
+        );
+
+        when(repository.save(any(Appointment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        AppointmentResponse response =
+                service.createAppointment(request, patient);
+
+        // Assert
+        assertEquals("Paul Dupont", response.getDoctorName());
+
+        verify(repository).countByDoctor_IdAndAppointmentDateAndStatus(
+                1L, appointmentDate, AppointmentStatus.SCHEDULED
+        );
+        verify(repository).countByDoctor_IdAndAppointmentDateAndStatus(
+                2L, appointmentDate, AppointmentStatus.SCHEDULED
+        );
+        verify(repository).save(any(Appointment.class));
+    }
+
+
+    @Test
+    void shouldChooseDoctorWithLowestIdWhenScheduledCountsAreEqual() {
+        AppointmentRepository repository =
+                createAppointmentRepository();
+        DoctorRepository doctorRepository =
+                createDoctorRepository();
+
+        DoctorScheduleRepository scheduleRepository =
+                mock(DoctorScheduleRepository.class);
+        DoctorScheduleExceptionRepository exceptionRepository =
+                mock(DoctorScheduleExceptionRepository.class);
+
+        AppointmentService service = createService(
+                repository,
+                doctorRepository,
+                scheduleRepository,
+                exceptionRepository
+        );
+
+        Patient patient = createPatient();
+        LocalDate appointmentDate = LocalDate.now().plusDays(7);
+        LocalTime startTime = LocalTime.of(10, 0);
+
+        Doctor marie = mock(Doctor.class);
+        when(marie.getId()).thenReturn(1L);
+        when(marie.getFirstName()).thenReturn("Marie");
+        when(marie.getLastName()).thenReturn("Rabe");
+
+        Doctor paul = mock(Doctor.class);
+        when(paul.getId()).thenReturn(2L);
+        when(paul.getFirstName()).thenReturn("Paul");
+        when(paul.getLastName()).thenReturn("Dupont");
+
+        when(doctorRepository.findAll())
+                .thenReturn(List.of(paul, marie));
+
+        when(doctorRepository.findById(1L))
+                .thenReturn(Optional.of(marie));
+        when(doctorRepository.findById(2L))
+                .thenReturn(Optional.of(paul));
+
+        when(scheduleRepository.findByDoctor_IdAndDayOfWeek(
+                1L, appointmentDate.getDayOfWeek()
+        )).thenReturn(List.of(new DoctorSchedule(
+                marie,
+                appointmentDate.getDayOfWeek(),
+                LocalTime.of(9, 0),
+                LocalTime.of(12, 0)
+        )));
+
+        when(scheduleRepository.findByDoctor_IdAndDayOfWeek(
+                2L, appointmentDate.getDayOfWeek()
+        )).thenReturn(List.of(new DoctorSchedule(
+                paul,
+                appointmentDate.getDayOfWeek(),
+                LocalTime.of(9, 0),
+                LocalTime.of(12, 0)
+        )));
+
+        when(exceptionRepository.findByDoctor_IdAndDate(
+                1L, appointmentDate
+        )).thenReturn(List.of());
+        when(exceptionRepository.findByDoctor_IdAndDate(
+                2L, appointmentDate
+        )).thenReturn(List.of());
+
+        when(repository
+                .existsByDoctor_IdAndAppointmentDateAndStatusAndStartTimeLessThanAndEndTimeGreaterThan(
+                        any(), any(), any(), any(), any()
+                )).thenReturn(false);
+
+        when(repository
+                .existsByPatientAndAppointmentDateAndStatusAndStartTimeLessThanAndEndTimeGreaterThan(
+                        any(), any(), any(), any(), any()
+                )).thenReturn(false);
+
+        // Égalité : chaque médecin a 1 rendez-vous planifié.
+        when(repository.countByDoctor_IdAndAppointmentDateAndStatus(
+                1L, appointmentDate, AppointmentStatus.SCHEDULED
+        )).thenReturn(1L);
+
+        when(repository.countByDoctor_IdAndAppointmentDateAndStatus(
+                2L, appointmentDate, AppointmentStatus.SCHEDULED
+        )).thenReturn(1L);
+
+        AppointmentRequest request = createRequest(
+                null,
+                appointmentDate,
+                startTime
+        );
+
+        when(repository.save(any(Appointment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        AppointmentResponse response =
+                service.createAppointment(request, patient);
+
+        // Assert : ID 1 doit gagner, même si findAll renvoie Paul en premier.
+        assertEquals("Marie Rabe", response.getDoctorName());
+
+        verify(repository).save(any(Appointment.class));
+    }
+
 }

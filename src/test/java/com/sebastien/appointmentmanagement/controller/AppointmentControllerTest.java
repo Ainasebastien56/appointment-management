@@ -4,10 +4,8 @@ package com.sebastien.appointmentmanagement.controller;
 import com.sebastien.appointmentmanagement.config.SecurityConfig;
 import com.sebastien.appointmentmanagement.dto.AppointmentRequest;
 import com.sebastien.appointmentmanagement.dto.AppointmentResponse;
-import com.sebastien.appointmentmanagement.entity.AppointmentStatus;
-import com.sebastien.appointmentmanagement.entity.AppointmentType;
-import com.sebastien.appointmentmanagement.entity.User;
-import com.sebastien.appointmentmanagement.entity.UserRole;
+import com.sebastien.appointmentmanagement.dto.UpdateAppointmentStatusRequest;
+import com.sebastien.appointmentmanagement.entity.*;
 import com.sebastien.appointmentmanagement.exception.AppointmentNotFoundException;
 import com.sebastien.appointmentmanagement.service.AppointmentService;
 import com.sebastien.appointmentmanagement.service.CurrentUserService;
@@ -448,6 +446,201 @@ class AppointmentControllerTest {
         mockMvc.perform(
                         get("/api/appointments")
                                 .param("status", "INVALID_STATUS")
+                )
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(appointmentService);
+    }
+
+    @Test
+    void shouldUpdateAppointmentStatusAsAdmin() throws Exception {
+
+        User admin = new User(
+                "admin@example.com",
+                "test-password",
+                UserRole.ADMIN
+        );
+
+        when(currentUserService.requireUser(anyString()))
+                .thenReturn(admin);
+
+        UpdateAppointmentStatusRequest request =
+                new UpdateAppointmentStatusRequest();
+
+        request.setStatus(AppointmentStatus.COMPLETED);
+
+        AppointmentResponse response =
+                createResponse(1L, AppointmentStatus.COMPLETED);
+
+        when(appointmentService.updateAppointmentStatus(
+                eq(1L),
+                eq(AppointmentStatus.COMPLETED),
+                eq(admin),
+                isNull(),
+                isNull()
+        )).thenReturn(response);
+
+        mockMvc.perform(
+                        patch("/api/appointments/1/status")
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request))
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        verify(appointmentService).updateAppointmentStatus(
+                1L,
+                AppointmentStatus.COMPLETED,
+                admin,
+                null,
+                null
+        );
+    }
+
+    @Test
+    void shouldCorrectNoShowAppointmentAsAdmin() throws Exception {
+
+        User admin = new User(
+                "admin@example.com",
+                "test-password",
+                UserRole.ADMIN
+        );
+
+        when(currentUserService.requireUser(anyString()))
+                .thenReturn(admin);
+
+        UpdateAppointmentStatusRequest request =
+                new UpdateAppointmentStatusRequest();
+
+        request.setStatus(AppointmentStatus.COMPLETED);
+        request.setChangeReason("Patient attendance confirmed after verification.");
+
+        AppointmentResponse response =
+                createResponse(1L, AppointmentStatus.COMPLETED);
+
+        when(appointmentService.updateAppointmentStatus(
+                eq(1L),
+                eq(AppointmentStatus.COMPLETED),
+                eq(admin),
+                isNull(),
+                eq("Patient attendance confirmed after verification.")
+        )).thenReturn(response);
+
+        mockMvc.perform(
+                        patch("/api/appointments/1/status")
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request))
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        verify(appointmentService).updateAppointmentStatus(
+                1L,
+                AppointmentStatus.COMPLETED,
+                admin,
+                null,
+                "Patient attendance confirmed after verification."
+        );
+    }
+
+    @Test
+    void shouldUpdateAppointmentStatusAsAssignedDoctor() throws Exception {
+
+        User doctorUser = new User(
+                "doctor@example.com",
+                "test-password",
+                UserRole.DOCTOR
+        );
+
+        Doctor doctor = mock(Doctor.class);
+
+        when(currentUserService.requireUser(anyString()))
+                .thenReturn(doctorUser);
+
+        when(currentUserService.requireDoctorProfile(doctorUser))
+                .thenReturn(doctor);
+
+        UpdateAppointmentStatusRequest request =
+                new UpdateAppointmentStatusRequest();
+
+        request.setStatus(AppointmentStatus.NO_SHOW);
+
+        AppointmentResponse response =
+                createResponse(1L, AppointmentStatus.NO_SHOW);
+
+        when(appointmentService.updateAppointmentStatus(
+                eq(1L),
+                eq(AppointmentStatus.NO_SHOW),
+                eq(doctorUser),
+                eq(doctor),
+                isNull()
+        )).thenReturn(response);
+
+        mockMvc.perform(
+                        patch("/api/appointments/1/status")
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request))
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("NO_SHOW"));
+
+        verify(currentUserService).requireDoctorProfile(doctorUser);
+
+        verify(appointmentService).updateAppointmentStatus(
+                1L,
+                AppointmentStatus.NO_SHOW,
+                doctorUser,
+                doctor,
+                null
+        );
+    }
+
+    @Test
+    void shouldRejectPatientWhenUpdatingAppointmentStatus() throws Exception {
+
+        User patient = new User(
+                "patient@example.com",
+                "test-password",
+                UserRole.PATIENT
+        );
+
+        when(currentUserService.requireUser(anyString()))
+                .thenReturn(patient);
+
+        UpdateAppointmentStatusRequest request =
+                new UpdateAppointmentStatusRequest();
+
+        request.setStatus(AppointmentStatus.COMPLETED);
+
+        mockMvc.perform(
+                        patch("/api/appointments/1/status")
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request))
+                )
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(appointmentService);
+    }
+
+    @Test
+    void shouldReturn400WhenAppointmentStatusIsMissing() throws Exception {
+
+        String jsonRequest = """
+            {
+                "changeReason": "Test reason"
+            }
+            """;
+
+        mockMvc.perform(
+                        patch("/api/appointments/1/status")
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(jsonRequest)
                 )
                 .andExpect(status().isBadRequest());
 

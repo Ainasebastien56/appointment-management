@@ -66,4 +66,10 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
             Long excludedAppointmentId
     );
 
+    long countByDoctor_IdAndAppointmentDateAndStatus(
+            Long doctorId,
+            LocalDate appointmentDate,
+            AppointmentStatus status
+    );
+
 }
