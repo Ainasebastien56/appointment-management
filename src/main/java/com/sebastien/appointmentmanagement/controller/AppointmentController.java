@@ -41,6 +41,7 @@ public class AppointmentController {
             @RequestParam(defaultValue = "false") boolean upcomingOnly,
             @RequestParam(defaultValue = "false") boolean pendingOutcomeOnly,
             @RequestParam(defaultValue = "false") boolean pastOutcomeOnly,
+            @RequestParam(required = false) LocalDate date,
             Pageable pageable,
             Authentication authentication) {
 
@@ -70,7 +71,13 @@ public class AppointmentController {
 
                 // Ne retourne que les rendez-vous associés à ce médecin.
                 return appointmentService.getAppointmentsForDoctor(
-                        doctor.getId(), status, pageable
+                        doctor.getId(),
+                        status,
+                        pageable,
+                        upcomingOnly,
+                        pendingOutcomeOnly,
+                        pastOutcomeOnly,
+                        date
                 );
 
             default:

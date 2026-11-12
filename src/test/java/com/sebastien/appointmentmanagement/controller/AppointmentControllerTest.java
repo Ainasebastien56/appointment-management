@@ -600,6 +600,60 @@ class AppointmentControllerTest {
     }
 
     @Test
+    void shouldPassTemporalAndDateFiltersForDoctorUsingProfileId()
+            throws Exception {
+
+        User doctorUser = new User(
+                "doctor@example.com",
+                "test-password",
+                UserRole.DOCTOR
+        );
+
+        Doctor doctor = mock(Doctor.class);
+        when(doctor.getId()).thenReturn(20L);
+
+        when(currentUserService.requireUser(anyString()))
+                .thenReturn(doctorUser);
+
+        when(currentUserService.requireDoctorProfile(doctorUser))
+                .thenReturn(doctor);
+
+        Page<AppointmentResponse> page = new PageImpl<>(
+                List.of(createResponse(1L, AppointmentStatus.SCHEDULED))
+        );
+
+        when(appointmentService.getAppointmentsForDoctor(
+                eq(20L),
+                isNull(),
+                any(Pageable.class),
+                eq(true),
+                eq(false),
+                eq(false),
+                eq(LocalDate.of(2026, 10, 20))
+        )).thenReturn(page);
+
+        mockMvc.perform(
+                        get("/api/appointments")
+                                .param("upcomingOnly", "true")
+                                .param("date", "2026-10-20")
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].doctorId").value(20));
+
+        verify(currentUserService).requireDoctorProfile(doctorUser);
+
+        verify(appointmentService).getAppointmentsForDoctor(
+                eq(20L),
+                isNull(),
+                any(Pageable.class),
+                eq(true),
+                eq(false),
+                eq(false),
+                eq(LocalDate.of(2026, 10, 20))
+        );
+    }
+
+    @Test
     void shouldRejectPatientWhenUpdatingAppointmentStatus() throws Exception {
 
         User patient = new User(

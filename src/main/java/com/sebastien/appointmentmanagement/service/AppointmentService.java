@@ -320,7 +320,7 @@ public class AppointmentService {
 
         // Limite obligatoirement les résultats au patient identifié par le serveur.
         return getAppointmentsScoped(
-                patientId, null, doctorName, status, pageable, false, false, false
+                patientId, null, doctorName, status, pageable, false, false, false, null
         ).map( response -> {
             if (response.getStatus() == AppointmentStatus.CANCELLED) {
                 response.setNotes(null);
@@ -346,7 +346,8 @@ public class AppointmentService {
                 pageable,
                 upcomingOnly,
                 false,
-                false
+                false,
+                null
         ).map(response -> {
             if (response.getStatus() == AppointmentStatus.CANCELLED) {
                 response.setNotes(null);
@@ -380,7 +381,8 @@ public class AppointmentService {
                 pageable,
                 upcomingOnly,
                 pendingOutcomeOnly,
-                false
+                false,
+                null
         ).map(response -> {
             if (response.getStatus() == AppointmentStatus.CANCELLED) {
                 response.setNotes(null);
@@ -400,6 +402,78 @@ public class AppointmentService {
             boolean pendingOutcomeOnly,
             boolean pastOutcomeOnly) {
 
+        validateSingleTemporalFilter(
+                upcomingOnly, pendingOutcomeOnly, pastOutcomeOnly
+        );
+
+        return getAppointmentsScoped(
+                patientId,
+                null,
+                doctorName,
+                status,
+                pageable,
+                upcomingOnly,
+                pendingOutcomeOnly,
+                pastOutcomeOnly,
+                null
+        ).map(response -> {
+            if (response.getStatus() == AppointmentStatus.CANCELLED) {
+                response.setNotes(null);
+            }
+            return response;
+        });
+    }
+
+
+    // Version sans filtre temporel ni filtre de date.
+    @Transactional(readOnly = true)
+    public Page<AppointmentResponse> getAppointmentsForDoctor(
+            Long doctorId,
+            AppointmentStatus status,
+            Pageable pageable
+            ) {
+
+        return getAppointmentsForDoctor(
+                doctorId, status, pageable, false, false, false, null
+        );
+    }
+
+    // Retourne les rendez-vous associés au profil du médecin connecté,
+    // avec les filtres temporels et un filtre optionnel sur une date précise.
+    @Transactional(readOnly = true)
+    public Page<AppointmentResponse> getAppointmentsForDoctor(
+            Long doctorId,
+            AppointmentStatus status,
+            Pageable pageable,
+            boolean upcomingOnly,
+            boolean pendingOutcomeOnly,
+            boolean pastOutcomeOnly,
+            LocalDate date) {
+
+        validateSingleTemporalFilter(
+                upcomingOnly, pendingOutcomeOnly, pastOutcomeOnly
+        );
+
+        // Limite obligatoirement les résultats au médecin identifié par le serveur.
+        return getAppointmentsScoped(
+                null,
+                doctorId,
+                null,
+                status,
+                pageable,
+                upcomingOnly,
+                pendingOutcomeOnly,
+                pastOutcomeOnly,
+                date
+        );
+    }
+
+    // Refuse la combinaison de plusieurs filtres temporels.
+    private void validateSingleTemporalFilter(
+            boolean upcomingOnly,
+            boolean pendingOutcomeOnly,
+            boolean pastOutcomeOnly) {
+
         int activeFilters = (upcomingOnly ? 1 : 0)
                 + (pendingOutcomeOnly ? 1 : 0)
                 + (pastOutcomeOnly ? 1 : 0);
@@ -410,37 +484,6 @@ public class AppointmentService {
                     "Only one temporal filter can be active at a time."
             );
         }
-
-        return getAppointmentsScoped(
-                patientId,
-                null,
-                doctorName,
-                status,
-                pageable,
-                upcomingOnly,
-                pendingOutcomeOnly,
-                pastOutcomeOnly
-        ).map(response -> {
-            if (response.getStatus() == AppointmentStatus.CANCELLED) {
-                response.setNotes(null);
-            }
-            return response;
-        });
-    }
-
-
-    // Retourne les rendez-vous associés au profil du médecin connecté.
-    @Transactional(readOnly = true)
-    public Page<AppointmentResponse> getAppointmentsForDoctor(
-            Long doctorId,
-            AppointmentStatus status,
-            Pageable pageable
-            ) {
-
-        // Limite obligatoirement les résultats au médecin identifié par le serveur.
-        return getAppointmentsScoped(
-                null, doctorId, null, status, pageable, false, false, false
-        );
     }
 
     private Predicate buildTemporalPredicate(
@@ -592,7 +635,8 @@ public class AppointmentService {
             Pageable pageable,
             boolean upcomingOnly,
             boolean pendingOutcomeOnly,
-            boolean pastOutcomeOnly) {
+            boolean pastOutcomeOnly,
+            LocalDate date) {
 
         // Prépare une recherche dynamique pour la table appointment.
         Specification<Appointment> specification = (root, query, criteriaBuilder) -> {
@@ -620,6 +664,14 @@ public class AppointmentService {
                 predicates.add(criteriaBuilder.equal(
                         root.get("status"),
                         status
+                ));
+            }
+
+            // Limite les résultats à une date précise si elle est fournie.
+            if (date != null) {
+                predicates.add(criteriaBuilder.equal(
+                        root.get("appointmentDate"),
+                        date
                 ));
             }
 

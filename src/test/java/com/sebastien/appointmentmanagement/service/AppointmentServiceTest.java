@@ -11,6 +11,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
@@ -23,6 +24,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class AppointmentServiceTest {
@@ -2062,6 +2064,71 @@ class AppointmentServiceTest {
         assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
         assertNull(appointment.getNotes());
         verify(repository, never()).save(any(Appointment.class));
+    }
+
+    @Test
+    void shouldRejectMultipleTemporalFiltersForDoctor() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentService service =
+                createService(repository, createDoctorRepository());
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.getAppointmentsForDoctor(
+                        10L,
+                        null,
+                        PageRequest.of(0, 10),
+                        true,
+                        true,
+                        false,
+                        null
+                )
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldReturnDoctorAppointmentsFilteredByDate() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentService service =
+                createService(repository, createDoctorRepository());
+
+        Doctor doctor = createDoctor("Dr", "Martin");
+        ReflectionTestUtils.setField(doctor, "id", 10L);
+
+        Appointment appointment = createAppointment(
+                createPatient(),
+                doctor,
+                LocalDate.now(),
+                AppointmentStatus.SCHEDULED
+        );
+
+        Pageable pageable = PageRequest.of(0, 10);
+
+        when(repository.findAll(
+                any(Specification.class),
+                eq(pageable)
+        )).thenReturn(new PageImpl<>(List.of(appointment)));
+
+        Page<AppointmentResponse> result = service.getAppointmentsForDoctor(
+                10L,
+                null,
+                pageable,
+                false,
+                false,
+                false,
+                LocalDate.now()
+        );
+
+        assertEquals(1, result.getTotalElements());
+        assertEquals(10L, result.getContent().get(0).getDoctorId());
+        verify(repository).findAll(
+                any(Specification.class),
+                eq(pageable)
+        );
     }
 
     @Test
