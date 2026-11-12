@@ -11,6 +11,8 @@ type AppointmentTab =
   | 'PENDING_OUTCOME'
   | 'CANCELLED';
 
+// Le patient voit ses rendez-vous dans l'ordre chronologique.
+const PATIENT_SORT = 'appointmentDate,asc';
 
 @Component({
   selector: 'app-my-appointments',
@@ -71,15 +73,16 @@ export class MyAppointments implements OnInit {
 
     const pastOutcomeOnly = this.activeTab === 'PAST';
 
-    this.appointmentService.getAppointments(
-      this.currentPage,
-      this.pageSize,
-      this.activeTab === 'CANCELLED' ? 'CANCELLED' : undefined,
+    this.appointmentService.getAppointments({
+      page: this.currentPage,
+      size: this.pageSize,
+      status: this.activeTab === 'CANCELLED' ? 'CANCELLED' : undefined,
       upcomingOnly,
       pendingOutcomeOnly,
       pastOutcomeOnly,
-      this.searchTerm
-    ).subscribe({
+      doctorName: this.searchTerm,
+      sort: PATIENT_SORT,
+    }).subscribe({
       next: (response) => {
         this.appointments = response.content;
 

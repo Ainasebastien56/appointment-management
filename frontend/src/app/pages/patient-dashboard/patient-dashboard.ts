@@ -10,6 +10,9 @@ import {
   AppointmentStatus,
 } from '../../models/appointment.model';
 
+// Le patient voit ses rendez-vous dans l'ordre chronologique.
+const PATIENT_SORT = 'appointmentDate,asc';
+
 interface CalendarDay {
   date: string;
   dayNumber: number;
@@ -60,18 +63,23 @@ export class PatientDashboard implements OnInit {
     this.errorMessage = '';
 
     forkJoin({
-      appointmentsPage: this.appointmentService.getAppointments(0, 100),
-      completedPage: this.appointmentService.getAppointments(
-        0,
-        1,
-        'COMPLETED',
-      ),
-      upcomingPage: this.appointmentService.getAppointments(
-        0,
-        5,
-        undefined,
-        true,
-      ),
+      appointmentsPage: this.appointmentService.getAppointments({
+        page: 0,
+        size: 100,
+        sort: PATIENT_SORT,
+      }),
+      completedPage: this.appointmentService.getAppointments({
+        page: 0,
+        size: 1,
+        status: 'COMPLETED',
+        sort: PATIENT_SORT,
+      }),
+      upcomingPage: this.appointmentService.getAppointments({
+        page: 0,
+        size: 5,
+        upcomingOnly: true,
+        sort: PATIENT_SORT,
+      }),
     }).subscribe({
       next: ({ appointmentsPage, completedPage, upcomingPage }) => {
         this.appointments = appointmentsPage.content ?? [];
