@@ -12,6 +12,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
@@ -1991,6 +1992,75 @@ class AppointmentServiceTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
 
+        verify(repository, never()).save(any(Appointment.class));
+    }
+
+    @Test
+    void shouldAllowAssignedDoctorToUpdateNotes() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentService service =
+                createService(repository, createDoctorRepository());
+
+        Doctor doctor = createDoctor("Dr", "Martin");
+        ReflectionTestUtils.setField(doctor, "id", 10L);
+
+        Appointment appointment = createAppointment(
+                createPatient(),
+                doctor,
+                LocalDate.now().plusDays(1),
+                AppointmentStatus.SCHEDULED
+        );
+
+        when(repository.findById(1L))
+                .thenReturn(Optional.of(appointment));
+        when(repository.save(any(Appointment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        AppointmentResponse response = service.updateAppointmentNotes(
+                1L,
+                "  Patient reports improvement.  ",
+                doctor.getUser(),
+                doctor
+        );
+
+        assertEquals("Patient reports improvement.", response.getNotes());
+        verify(repository).save(appointment);
+    }
+
+    @Test
+    void shouldRejectDoctorUpdatingNotesOfAnotherDoctorsAppointment() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentService service =
+                createService(repository, createDoctorRepository());
+
+        Doctor assignedDoctor = createDoctor("Dr", "Martin");
+        ReflectionTestUtils.setField(assignedDoctor, "id", 10L);
+
+        Doctor otherDoctor = createDoctor("Dr", "Bernard");
+        ReflectionTestUtils.setField(otherDoctor, "id", 20L);
+
+        Appointment appointment = createAppointment(
+                createPatient(),
+                assignedDoctor,
+                LocalDate.now().plusDays(1),
+                AppointmentStatus.SCHEDULED
+        );
+
+        when(repository.findById(1L))
+                .thenReturn(Optional.of(appointment));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> service.updateAppointmentNotes(
+                        1L,
+                        "Notes from the wrong doctor",
+                        otherDoctor.getUser(),
+                        otherDoctor
+                )
+        );
+
+        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+        assertNull(appointment.getNotes());
         verify(repository, never()).save(any(Appointment.class));
     }
 

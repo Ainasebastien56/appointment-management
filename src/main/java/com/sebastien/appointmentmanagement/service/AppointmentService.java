@@ -1045,6 +1045,16 @@ public class AppointmentService {
             );
         }
 
+        // Un médecin ne peut modifier que les notes de ses propres rendez-vous.
+        if (role == UserRole.DOCTOR
+                && !requestingDoctor.getId().equals(
+                appointment.getDoctor().getId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Doctors can only update notes on their own appointments."
+            );
+        }
+
         // Un rendez-vous annulé ne peut plus recevoir de notes.
         if (appointment.getStatus() == AppointmentStatus.CANCELLED) {
             throw new ResponseStatusException(
