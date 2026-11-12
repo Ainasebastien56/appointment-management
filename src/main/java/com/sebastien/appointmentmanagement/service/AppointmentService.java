@@ -321,15 +321,9 @@ public class AppointmentService {
             AppointmentStatus status,
             Pageable pageable) {
 
-        // Limite obligatoirement les résultats au patient identifié par le serveur.
-        return getAppointmentsScoped(
-                patientId, null, doctorName, status, pageable, false, false, false, null
-        ).map( response -> {
-            if (response.getStatus() == AppointmentStatus.CANCELLED) {
-                response.setNotes(null);
-            }
-            return response;
-        });
+        return getAppointmentsForPatient(
+                patientId, doctorName, status, pageable, false, false, false
+        );
     }
 
     // Version avec le filtre Upcoming.
@@ -341,22 +335,9 @@ public class AppointmentService {
             Pageable pageable,
             boolean upcomingOnly) {
 
-        return getAppointmentsScoped(
-                patientId,
-                null,
-                doctorName,
-                status,
-                pageable,
-                upcomingOnly,
-                false,
-                false,
-                null
-        ).map(response -> {
-            if (response.getStatus() == AppointmentStatus.CANCELLED) {
-                response.setNotes(null);
-            }
-            return response;
-        });
+        return getAppointmentsForPatient(
+                patientId, doctorName, status, pageable, upcomingOnly, false, false
+        );
     }
 
     // Version avec les deux filtres temporels.
@@ -369,32 +350,13 @@ public class AppointmentService {
             boolean upcomingOnly,
             boolean pendingOutcomeOnly) {
 
-        if (upcomingOnly && pendingOutcomeOnly) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Upcoming and pending outcome filters cannot be used together."
-            );
-        }
-
-        return getAppointmentsScoped(
-                patientId,
-                null,
-                doctorName,
-                status,
-                pageable,
-                upcomingOnly,
-                pendingOutcomeOnly,
-                false,
-                null
-        ).map(response -> {
-            if (response.getStatus() == AppointmentStatus.CANCELLED) {
-                response.setNotes(null);
-            }
-            return response;
-        });
+        return getAppointmentsForPatient(
+                patientId, doctorName, status, pageable,
+                upcomingOnly, pendingOutcomeOnly, false
+        );
     }
 
-    // Version avec les trois filtres temporels.
+    // Version avec les trois filtres temporels : toutes les autres y délèguent.
     @Transactional(readOnly = true)
     public Page<AppointmentResponse> getAppointmentsForPatient(
             Long patientId,
@@ -409,6 +371,7 @@ public class AppointmentService {
                 upcomingOnly, pendingOutcomeOnly, pastOutcomeOnly
         );
 
+        // Limite obligatoirement les résultats au patient identifié par le serveur.
         return getAppointmentsScoped(
                 patientId,
                 null,
@@ -419,26 +382,15 @@ public class AppointmentService {
                 pendingOutcomeOnly,
                 pastOutcomeOnly,
                 null
-        ).map(response -> {
-            if (response.getStatus() == AppointmentStatus.CANCELLED) {
-                response.setNotes(null);
-            }
-            return response;
-        });
+        ).map(this::hideNotesForPatient);
     }
 
-
-    // Version sans filtre temporel ni filtre de date.
-    @Transactional(readOnly = true)
-    public Page<AppointmentResponse> getAppointmentsForDoctor(
-            Long doctorId,
-            AppointmentStatus status,
-            Pageable pageable
-            ) {
-
-        return getAppointmentsForDoctor(
-                doctorId, status, pageable, false, false, false, null
-        );
+    // Les notes d'un rendez-vous annulé ne sont pas visibles par le patient.
+    private AppointmentResponse hideNotesForPatient(AppointmentResponse response) {
+        if (response.getStatus() == AppointmentStatus.CANCELLED) {
+            response.setNotes(null);
+        }
+        return response;
     }
 
     // Retourne les rendez-vous associés au profil du médecin connecté,
@@ -948,10 +900,8 @@ public class AppointmentService {
 
         AppointmentResponse response = toResponse(appointment);
 
-        // Les notes d'un rendez-vous annulé ne sont pas visibles par le patient.
-        if (role == UserRole.PATIENT
-                && appointment.getStatus() == AppointmentStatus.CANCELLED) {
-            response.setNotes(null);
+        if (role == UserRole.PATIENT) {
+            hideNotesForPatient(response);
         }
 
         return response;

@@ -6,6 +6,10 @@ import com.sebastien.appointmentmanagement.dto.AppointmentResponse;
 import com.sebastien.appointmentmanagement.entity.*;
 import com.sebastien.appointmentmanagement.exception.AppointmentNotFoundException;
 import com.sebastien.appointmentmanagement.repository.*;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Root;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Page;
@@ -2128,46 +2132,79 @@ class AppointmentServiceTest {
         verifyNoInteractions(repository);
     }
 
-    @Test
+    // Exécute la recherche du médecin et retourne la Specification
+    // transmise au repository.
     @SuppressWarnings("unchecked")
-    void shouldReturnDoctorAppointmentsFilteredByDate() {
+    private Specification<Appointment> captureDoctorSpecification(LocalDate date) {
         AppointmentRepository repository = createAppointmentRepository();
         AppointmentService service =
                 createService(repository, createDoctorRepository());
 
-        Doctor doctor = createDoctor("Dr", "Martin");
-        ReflectionTestUtils.setField(doctor, "id", 10L);
+        when(repository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
 
-        Appointment appointment = createAppointment(
-                createPatient(),
-                doctor,
-                LocalDate.now(),
-                AppointmentStatus.SCHEDULED
+        service.getAppointmentsForDoctor(
+                10L, null, PageRequest.of(0, 10), false, false, false, date
         );
 
-        Pageable pageable = PageRequest.of(0, 10);
-
-        when(repository.findAll(
-                any(Specification.class),
-                any(Pageable.class)
-        )).thenReturn(new PageImpl<>(List.of(appointment)));
-
-        Page<AppointmentResponse> result = service.getAppointmentsForDoctor(
-                10L,
-                null,
-                pageable,
-                false,
-                false,
-                false,
-                LocalDate.now()
-        );
-
-        assertEquals(1, result.getTotalElements());
-        assertEquals(10L, result.getContent().get(0).getDoctorId());
+        ArgumentCaptor<Specification<Appointment>> specificationCaptor =
+                ArgumentCaptor.forClass(Specification.class);
         verify(repository).findAll(
-                any(Specification.class),
+                specificationCaptor.capture(),
                 any(Pageable.class)
         );
+
+        return specificationCaptor.getValue();
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void shouldAddDatePredicateToDoctorSpecification() {
+        LocalDate date = LocalDate.of(2026, 10, 20);
+        Specification<Appointment> specification =
+                captureDoctorSpecification(date);
+
+        // Simule l'API Criteria pour observer les prédicats construits.
+        Root<Appointment> root = mock(Root.class);
+        CriteriaQuery<?> query = mock(CriteriaQuery.class);
+        CriteriaBuilder criteriaBuilder = mock(CriteriaBuilder.class);
+
+        Path appointmentDatePath = mock(Path.class);
+        Path doctorPath = mock(Path.class);
+        Path doctorIdPath = mock(Path.class);
+
+        when(root.get("appointmentDate")).thenReturn(appointmentDatePath);
+        when(root.get("doctor")).thenReturn(doctorPath);
+        when(doctorPath.get("id")).thenReturn(doctorIdPath);
+
+        specification.toPredicate(root, query, criteriaBuilder);
+
+        // Le résultat est limité au médecin ET à la date demandée.
+        verify(criteriaBuilder).equal(doctorIdPath, 10L);
+        verify(criteriaBuilder).equal(appointmentDatePath, date);
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void shouldNotAddDatePredicateWhenDateIsMissing() {
+        Specification<Appointment> specification =
+                captureDoctorSpecification(null);
+
+        Root<Appointment> root = mock(Root.class);
+        CriteriaBuilder criteriaBuilder = mock(CriteriaBuilder.class);
+
+        Path appointmentDatePath = mock(Path.class);
+        Path doctorPath = mock(Path.class);
+        Path doctorIdPath = mock(Path.class);
+
+        when(root.get("appointmentDate")).thenReturn(appointmentDatePath);
+        when(root.get("doctor")).thenReturn(doctorPath);
+        when(doctorPath.get("id")).thenReturn(doctorIdPath);
+
+        specification.toPredicate(root, mock(CriteriaQuery.class), criteriaBuilder);
+
+        verify(criteriaBuilder).equal(doctorIdPath, 10L);
+        verify(criteriaBuilder, never()).equal(eq(appointmentDatePath), any(Object.class));
     }
 
     // Exécute la recherche du médecin et retourne le Pageable transmis au repository.
