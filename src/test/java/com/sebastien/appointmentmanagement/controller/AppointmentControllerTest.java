@@ -4,6 +4,7 @@ package com.sebastien.appointmentmanagement.controller;
 import com.sebastien.appointmentmanagement.config.SecurityConfig;
 import com.sebastien.appointmentmanagement.dto.AppointmentRequest;
 import com.sebastien.appointmentmanagement.dto.AppointmentResponse;
+import com.sebastien.appointmentmanagement.dto.DoctorAppointmentStatisticsResponse;
 import com.sebastien.appointmentmanagement.dto.UpdateAppointmentStatusRequest;
 import com.sebastien.appointmentmanagement.entity.*;
 import com.sebastien.appointmentmanagement.exception.AppointmentNotFoundException;
@@ -632,6 +633,65 @@ class AppointmentControllerTest {
                 doctor,
                 null
         );
+    }
+
+    @Test
+    void shouldReturnDoctorStatisticsForDoctor() throws Exception {
+
+        User doctorUser = new User(
+                "doctor@example.com",
+                "test-password",
+                UserRole.DOCTOR
+        );
+
+        Doctor doctor = mock(Doctor.class);
+        when(doctor.getId()).thenReturn(20L);
+
+        when(currentUserService.requireUser(anyString()))
+                .thenReturn(doctorUser);
+
+        when(currentUserService.requireDoctorProfile(doctorUser))
+                .thenReturn(doctor);
+
+        when(appointmentService.getDoctorAppointmentStatistics(20L))
+                .thenReturn(new DoctorAppointmentStatisticsResponse(2, 5, 1, 7));
+
+        mockMvc.perform(get("/api/appointments/my-doctor-statistics"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.todayAppointments").value(2))
+                .andExpect(jsonPath("$.upcomingAppointments").value(5))
+                .andExpect(jsonPath("$.pendingOutcomes").value(1))
+                .andExpect(jsonPath("$.completedAppointments").value(7));
+
+        verify(appointmentService).getDoctorAppointmentStatistics(20L);
+    }
+
+    @Test
+    void shouldRejectPatientFromDoctorStatistics() throws Exception {
+
+        User patientUser = new User(
+                "patient@example.com",
+                "test-password",
+                UserRole.PATIENT
+        );
+
+        when(currentUserService.requireUser(anyString()))
+                .thenReturn(patientUser);
+
+        mockMvc.perform(get("/api/appointments/my-doctor-statistics"))
+                .andExpect(status().isForbidden());
+
+        verify(appointmentService, never()).getDoctorAppointmentStatistics(any());
+    }
+
+    @Test
+    void shouldRejectAdminFromDoctorStatistics() throws Exception {
+
+        // L'utilisateur par défaut défini dans setUpCurrentUser est un ADMIN.
+        mockMvc.perform(get("/api/appointments/my-doctor-statistics"))
+                .andExpect(status().isForbidden());
+
+        verify(appointmentService, never()).getDoctorAppointmentStatistics(any());
     }
 
     @Test

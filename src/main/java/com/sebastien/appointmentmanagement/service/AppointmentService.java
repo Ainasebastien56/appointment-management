@@ -5,6 +5,7 @@ import com.sebastien.appointmentmanagement.dto.AppointmentRequest;
 import com.sebastien.appointmentmanagement.dto.AppointmentResponse;
 import com.sebastien.appointmentmanagement.dto.AppointmentStatisticsResponse;
 import com.sebastien.appointmentmanagement.dto.AvailableSlotResponse;
+import com.sebastien.appointmentmanagement.dto.DoctorAppointmentStatisticsResponse;
 import com.sebastien.appointmentmanagement.entity.*;
 import com.sebastien.appointmentmanagement.exception.AppointmentNotFoundException;
 import com.sebastien.appointmentmanagement.repository.*;
@@ -525,21 +526,29 @@ public class AppointmentService {
         return cb.conjunction();
     }
 
-    private Specification<Appointment> buildPatientStatisticsSpecification(
-            Long patientId,
+    /**
+     * Construit les critères de comptage des statistiques.
+     * ownerField vaut "patient" ou "doctor" : les résultats sont toujours
+     * limités au profil identifié par le serveur.
+     */
+    private Specification<Appointment> buildStatisticsSpecification(
+            String ownerField,
+            Long ownerId,
             boolean upcomingOnly,
             boolean pendingOutcomeOnly,
             AppointmentStatus status,
+            LocalDate date,
+            boolean excludeCancelled,
             LocalDateTime now
     ) {
         return (root, query, criteriaBuilder) -> {
 
             List<Predicate> predicates = new ArrayList<>();
 
-            // Toujours limiter les statistiques au patient concerné.
+            // Toujours limiter les statistiques au profil concerné.
             predicates.add(criteriaBuilder.equal(
-                    root.get("patient").get("id"),
-                    patientId
+                    root.get(ownerField).get("id"),
+                    ownerId
             ));
 
             // Appliquer éventuellement un filtre de statut.
@@ -547,6 +556,22 @@ public class AppointmentService {
                 predicates.add(criteriaBuilder.equal(
                         root.get("status"),
                         status
+                ));
+            }
+
+            // Limiter éventuellement à une date précise.
+            if (date != null) {
+                predicates.add(criteriaBuilder.equal(
+                        root.get("appointmentDate"),
+                        date
+                ));
+            }
+
+            // Exclure éventuellement les rendez-vous annulés.
+            if (excludeCancelled) {
+                predicates.add(criteriaBuilder.notEqual(
+                        root.get("status"),
+                        AppointmentStatus.CANCELLED
                 ));
             }
 
@@ -577,34 +602,25 @@ public class AppointmentService {
 
         // 1. Rendez-vous futurs encore planifiés.
         long scheduledAppointments = appointmentRepository.count(
-                buildPatientStatisticsSpecification(
-                        patientId,
-                        true,
-                        false,
-                        null,
-                        now
+                buildStatisticsSpecification(
+                        "patient", patientId,
+                        true, false, null, null, false, now
                 )
         );
 
         // 2. Rendez-vous passés sans résultat enregistré.
         long pendingOutcomes = appointmentRepository.count(
-                buildPatientStatisticsSpecification(
-                        patientId,
-                        false,
-                        true,
-                        null,
-                        now
+                buildStatisticsSpecification(
+                        "patient", patientId,
+                        false, true, null, null, false, now
                 )
         );
 
         // 3. Tous les rendez-vous annulés.
         long cancelledAppointments = appointmentRepository.count(
-                buildPatientStatisticsSpecification(
-                        patientId,
-                        false,
-                        false,
-                        AppointmentStatus.CANCELLED,
-                        now
+                buildStatisticsSpecification(
+                        "patient", patientId,
+                        false, false, AppointmentStatus.CANCELLED, null, false, now
                 )
         );
 
@@ -612,6 +628,54 @@ public class AppointmentService {
                 scheduledAppointments,
                 pendingOutcomes,
                 cancelledAppointments
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public DoctorAppointmentStatisticsResponse getDoctorAppointmentStatistics(
+            Long doctorId
+    ) {
+
+        // Capturer une seule fois la date et l'heure actuelles.
+        LocalDateTime now = LocalDateTime.now();
+
+        // 1. Rendez-vous du jour, hors annulations.
+        long todayAppointments = appointmentRepository.count(
+                buildStatisticsSpecification(
+                        "doctor", doctorId,
+                        false, false, null, now.toLocalDate(), true, now
+                )
+        );
+
+        // 2. Rendez-vous futurs encore planifiés.
+        long upcomingAppointments = appointmentRepository.count(
+                buildStatisticsSpecification(
+                        "doctor", doctorId,
+                        true, false, null, null, false, now
+                )
+        );
+
+        // 3. Rendez-vous passés sans résultat enregistré.
+        long pendingOutcomes = appointmentRepository.count(
+                buildStatisticsSpecification(
+                        "doctor", doctorId,
+                        false, true, null, null, false, now
+                )
+        );
+
+        // 4. Tous les rendez-vous terminés.
+        long completedAppointments = appointmentRepository.count(
+                buildStatisticsSpecification(
+                        "doctor", doctorId,
+                        false, false, AppointmentStatus.COMPLETED, null, false, now
+                )
+        );
+
+        return new DoctorAppointmentStatisticsResponse(
+                todayAppointments,
+                upcomingAppointments,
+                pendingOutcomes,
+                completedAppointments
         );
     }
 

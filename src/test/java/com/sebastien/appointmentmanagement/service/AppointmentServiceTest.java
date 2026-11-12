@@ -3,6 +3,7 @@ package com.sebastien.appointmentmanagement.service;
 
 import com.sebastien.appointmentmanagement.dto.AppointmentRequest;
 import com.sebastien.appointmentmanagement.dto.AppointmentResponse;
+import com.sebastien.appointmentmanagement.dto.DoctorAppointmentStatisticsResponse;
 import com.sebastien.appointmentmanagement.entity.*;
 import com.sebastien.appointmentmanagement.exception.AppointmentNotFoundException;
 import com.sebastien.appointmentmanagement.repository.*;
@@ -2291,6 +2292,138 @@ class AppointmentServiceTest {
         );
 
         assertEquals(requested, used);
+    }
+
+    // Mocks de l'API Criteria permettant d'observer les prédicats construits.
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static class CriteriaMocks {
+        final Root<Appointment> root = mock(Root.class);
+        final CriteriaBuilder criteriaBuilder = mock(CriteriaBuilder.class);
+        final Path doctorPath = mock(Path.class);
+        final Path doctorIdPath = mock(Path.class);
+        final Path patientPath = mock(Path.class);
+        final Path patientIdPath = mock(Path.class);
+        final Path appointmentDatePath = mock(Path.class);
+        final Path statusPath = mock(Path.class);
+
+        CriteriaMocks() {
+            when(root.get("doctor")).thenReturn(doctorPath);
+            when(doctorPath.get("id")).thenReturn(doctorIdPath);
+            when(root.get("patient")).thenReturn(patientPath);
+            when(patientPath.get("id")).thenReturn(patientIdPath);
+            when(root.get("appointmentDate")).thenReturn(appointmentDatePath);
+            when(root.get("status")).thenReturn(statusPath);
+        }
+
+        void evaluate(Specification<Appointment> specification) {
+            specification.toPredicate(
+                    root, mock(CriteriaQuery.class), criteriaBuilder
+            );
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Specification<Appointment>> captureCountSpecifications(
+            AppointmentRepository repository,
+            int expectedCalls) {
+
+        ArgumentCaptor<Specification<Appointment>> captor =
+                ArgumentCaptor.forClass(Specification.class);
+        verify(repository, times(expectedCalls)).count(captor.capture());
+        return captor.getAllValues();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldReturnDoctorAppointmentStatistics() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentService service =
+                createService(repository, createDoctorRepository());
+
+        when(repository.count(any(Specification.class)))
+                .thenReturn(2L, 5L, 1L, 7L);
+
+        DoctorAppointmentStatisticsResponse statistics =
+                service.getDoctorAppointmentStatistics(10L);
+
+        assertEquals(2L, statistics.todayAppointments());
+        assertEquals(5L, statistics.upcomingAppointments());
+        assertEquals(1L, statistics.pendingOutcomes());
+        assertEquals(7L, statistics.completedAppointments());
+    }
+
+    @Test
+    void shouldScopeDoctorStatisticsToDoctor() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentService service =
+                createService(repository, createDoctorRepository());
+
+        service.getDoctorAppointmentStatistics(10L);
+
+        List<Specification<Appointment>> specifications =
+                captureCountSpecifications(repository, 4);
+
+        // Chaque comptage est limité au médecin et n'utilise jamais le patient.
+        for (Specification<Appointment> specification : specifications) {
+            CriteriaMocks mocks = new CriteriaMocks();
+            mocks.evaluate(specification);
+
+            verify(mocks.criteriaBuilder).equal(mocks.doctorIdPath, 10L);
+            verify(mocks.root, never()).get("patient");
+        }
+
+        // 1. Aujourd'hui : date du jour, annulations exclues.
+        CriteriaMocks today = new CriteriaMocks();
+        today.evaluate(specifications.get(0));
+        verify(today.criteriaBuilder)
+                .equal(today.appointmentDatePath, LocalDate.now());
+        verify(today.criteriaBuilder)
+                .notEqual(today.statusPath, AppointmentStatus.CANCELLED);
+
+        // 2 et 3. À venir et en attente : uniquement les rendez-vous planifiés.
+        for (int index = 1; index <= 2; index++) {
+            CriteriaMocks temporal = new CriteriaMocks();
+            temporal.evaluate(specifications.get(index));
+            verify(temporal.criteriaBuilder)
+                    .equal(temporal.statusPath, AppointmentStatus.SCHEDULED);
+            verify(temporal.criteriaBuilder, never())
+                    .notEqual(any(), any(Object.class));
+        }
+
+        // 4. Terminés : statut COMPLETED.
+        CriteriaMocks completed = new CriteriaMocks();
+        completed.evaluate(specifications.get(3));
+        verify(completed.criteriaBuilder)
+                .equal(completed.statusPath, AppointmentStatus.COMPLETED);
+    }
+
+    @Test
+    void shouldScopePatientStatisticsToPatient() {
+        AppointmentRepository repository = createAppointmentRepository();
+        AppointmentService service =
+                createService(repository, createDoctorRepository());
+
+        service.getPatientAppointmentStatistics(1L);
+
+        List<Specification<Appointment>> specifications =
+                captureCountSpecifications(repository, 3);
+
+        // Le comportement patient reste inchangé : aucun filtre de date
+        // ni exclusion des annulations.
+        for (Specification<Appointment> specification : specifications) {
+            CriteriaMocks mocks = new CriteriaMocks();
+            mocks.evaluate(specification);
+
+            verify(mocks.criteriaBuilder).equal(mocks.patientIdPath, 1L);
+            verify(mocks.root, never()).get("doctor");
+            verify(mocks.criteriaBuilder, never())
+                    .notEqual(any(), any(Object.class));
+        }
+
+        CriteriaMocks cancelled = new CriteriaMocks();
+        cancelled.evaluate(specifications.get(2));
+        verify(cancelled.criteriaBuilder)
+                .equal(cancelled.statusPath, AppointmentStatus.CANCELLED);
     }
 
     @Test

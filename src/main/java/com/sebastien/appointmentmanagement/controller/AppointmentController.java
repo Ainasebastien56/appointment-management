@@ -113,6 +113,30 @@ public class AppointmentController {
         );
     }
 
+    @GetMapping("/my-doctor-statistics")
+    public DoctorAppointmentStatisticsResponse getMyDoctorAppointmentStatistics(
+            Authentication authentication
+    ) {
+        // Récupérer l'utilisateur authentifié.
+        User user = currentUserService.requireUser(authentication.getName());
+
+        // Cet endpoint est réservé aux médecins.
+        if (user.getRole() != UserRole.DOCTOR) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Only doctors can access doctor appointment statistics."
+            );
+        }
+
+        // Récupérer le profil médecin associé au compte connecté.
+        Doctor doctor = currentUserService.requireDoctorProfile(user);
+
+        // Calculer les statistiques de ce médecin uniquement.
+        return appointmentService.getDoctorAppointmentStatistics(
+                doctor.getId()
+        );
+    }
+
     @PostMapping
     public ResponseEntity<AppointmentResponse>  createAppointment(
             @Valid @RequestBody AppointmentRequest appointmentRequest,
