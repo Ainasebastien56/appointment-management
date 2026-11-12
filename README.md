@@ -28,9 +28,9 @@ Patients register, browse doctors' available slots and book appointments. Doctor
 - **Doctor schedules**: weekly availability per doctor, plus date-specific exceptions (day off or custom hours).
 - **Booking**: appointments are 30-minute slots aligned on the doctor's schedule. The API computes available slots and rejects conflicting bookings.
 - **Appointment lifecycle**: statuses `SCHEDULED`, `COMPLETED`, `NO_SHOW` and `CANCELLED`. Every status change is recorded in a status history, with an optional reason.
-- **Cancellation**: appointments are never deleted, only cancelled, so their history is kept. Patients cannot cancel less than 2 hours before the appointment starts.
+- **Cancellation**: appointments are never deleted, only cancelled, so their history is kept. Patients cannot cancel less than 2 hours before the appointment starts. Doctors can cancel their own appointments before they start, with a required reason that the patient can see.
 - **Doctor notes** on appointments.
-- **Patient statistics** for the patient dashboard.
+- **Statistics** for the patient and doctor dashboards.
 - **Role-based dashboards** in the frontend for patients, doctors and administrators, with light and dark themes.
 
 ## Getting Started
@@ -144,13 +144,62 @@ All endpoints except `/api/auth/**` require an `Authorization: Bearer <token>` h
 | `GET` | `/api/appointments/{id}` | All | Get one appointment the user has access to |
 | `GET` | `/api/appointments/available-slots?date=&doctorId=` | Patient | List available 30-minute slots for a date |
 | `GET` | `/api/appointments/my-statistics` | Patient | Statistics on the patient's appointments |
+| `GET` | `/api/appointments/my-doctor-statistics` | Doctor | Statistics on the doctor's appointments |
 | `POST` | `/api/appointments` | Patient | Book an appointment |
 | `PUT` | `/api/appointments/{id}` | Patient (own), Admin | Update an appointment |
-| `PATCH` | `/api/appointments/{id}/status` | Doctor (own), Admin | Change the status, with an optional reason |
+| `PATCH` | `/api/appointments/{id}/status` | Doctor (own), Admin | Record the outcome, or cancel (doctors only) |
 | `PATCH` | `/api/appointments/{id}/notes` | Doctor (own), Admin | Update the notes |
 | `DELETE` | `/api/appointments/{id}` | Patient (own), Admin | Cancel an appointment (it is not deleted) |
 
-`GET /api/appointments` accepts optional filters (`status`, `doctorName`, `doctorLastName`, `upcomingOnly`, `pendingOutcomeOnly`, `pastOutcomeOnly`) and Spring Data pagination parameters (`page`, `size`, `sort`).
+#### Listing filters
+
+`GET /api/appointments` accepts Spring Data pagination parameters (`page`, `size`, `sort`) and optional filters. The filters available depend on the role:
+
+| Filter | Admin | Patient | Doctor | Meaning |
+|---|---|---|---|---|
+| `status` | ✓ | ✓ | ✓ | `SCHEDULED`, `COMPLETED`, `NO_SHOW` or `CANCELLED` |
+| `doctorLastName` | ✓ | | | Exact doctor last name |
+| `doctorName` | | ✓ | | Partial match on the doctor's full name |
+| `upcomingOnly` | | ✓ | ✓ | `SCHEDULED` appointments that have not started yet |
+| `pendingOutcomeOnly` | | ✓ | ✓ | `SCHEDULED` appointments that have started, with no outcome recorded |
+| `pastOutcomeOnly` | | ✓ | ✓ | `COMPLETED` or `NO_SHOW` appointments |
+| `date` (`YYYY-MM-DD`) | | | ✓ | Appointments on that day only |
+
+Other filters are ignored for that role. Only one of `upcomingOnly`, `pendingOutcomeOnly` and `pastOutcomeOnly` can be set at a time; combining them returns `400`. `date` can be combined with the others.
+
+When a doctor sends no `sort`, the list is sorted by date then start time: nearest first with `upcomingOnly` or `date`, most recent first otherwise.
+
+#### Statistics
+
+`GET /api/appointments/my-statistics` (patient) returns `scheduledAppointments` (upcoming), `pendingOutcomes` and `cancelledAppointments`.
+
+`GET /api/appointments/my-doctor-statistics` (doctor) returns:
+
+```json
+{
+  "todayAppointments": 4,
+  "upcomingAppointments": 12,
+  "pendingOutcomes": 1,
+  "completedAppointments": 87
+}
+```
+
+`todayAppointments` counts today's appointments except cancelled ones. `upcomingAppointments` and `pendingOutcomes` follow the same rules as the `upcomingOnly` and `pendingOutcomeOnly` filters. `completedAppointments` counts all `COMPLETED` appointments.
+
+#### Status changes and cancellation
+
+`PATCH /api/appointments/{id}/status` takes `{ "status": "...", "changeReason": "..." }`:
+
+- **`COMPLETED` or `NO_SHOW`**: doctors (on their own appointments) and admins can record the outcome of a `SCHEDULED` appointment. Only an admin can correct an outcome that is already recorded, and must give a `changeReason`.
+- **`CANCELLED`**: doctors only, on their own `SCHEDULED` appointments. `changeReason` is required, and an appointment that has already started cannot be cancelled (`409`). Admins cancel with `DELETE` instead.
+
+`DELETE /api/appointments/{id}` cancels the appointment, for patients (their own, at least 2 hours before the start) and admins. It accepts an optional body to give a reason:
+
+```json
+{ "reason": "I have a work conflict." }
+```
+
+Every cancellation is recorded in the status history. The reason is returned to the patient in the `cancellationReason` field of the appointment. Doctor notes stay hidden from patients on cancelled appointments.
 
 Example booking request (`POST /api/appointments`):
 
