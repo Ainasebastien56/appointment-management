@@ -2,7 +2,9 @@
 export type AppointmentStatus =
   | 'SCHEDULED'
   | 'COMPLETED'
+  | 'NO_SHOW'
   | 'CANCELLED';
+
 
 export interface Appointment {
   id: number;

@@ -3,12 +3,13 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, ChangeDetectorRef } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
+import { ThemeToggle } from '../../components/theme-toggle/theme-toggle';
 import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, ThemeToggle],
   templateUrl: './login.html',
   styleUrl: './login.css',
 })
@@ -81,11 +82,11 @@ export class Login {
         this.notice = 'Signed in successfully.';
         this.form.password = '';
 
-        const role  = this.authService.getCurrentRole();
+        const role = this.authService.getCurrentRole();
 
-        if (role){
+        if (role) {
           this.router.navigate([this.authService.getDashboardUrl(role)]);
-        } else{
+        } else {
           this.error = 'Unable to identify your role. Please sign in again.';
         }
 

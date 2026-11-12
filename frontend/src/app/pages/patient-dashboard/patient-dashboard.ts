@@ -2,6 +2,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject, ChangeDetectorRef } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { forkJoin } from 'rxjs';
 
 import { AppointmentService } from '../../services/appointment.service';
 import {
@@ -29,10 +30,15 @@ export class PatientDashboard implements OnInit {
   private readonly cdr = inject(ChangeDetectorRef);
 
   appointments: Appointment[] = [];
+  upcomingAppointmentsList: Appointment[] = [];
   calendarDays: CalendarDay[] = [];
+  totalAppointmentsCount = 0;
+  completedAppointmentsCount = 0;
+  upcomingAppointmentsCount = 0;
 
   isLoading = true;
   errorMessage = '';
+
 
   readonly today = this.getLocalDate(new Date());
 
@@ -53,50 +59,66 @@ export class PatientDashboard implements OnInit {
     this.isLoading = true;
     this.errorMessage = '';
 
-    this.appointmentService.getAppointments(0, 100).subscribe({
-      next: (page) => {
-        this.appointments = page.content ?? [];
-        this.buildCalendar();
-        this.isLoading = false;
+    forkJoin({
+      appointmentsPage: this.appointmentService.getAppointments(0, 100),
+      completedPage: this.appointmentService.getAppointments(
+        0,
+        1,
+        'COMPLETED',
+      ),
+      upcomingPage: this.appointmentService.getAppointments(
+        0,
+        5,
+        undefined,
+        true,
+      ),
+    }).subscribe({
+      next: ({ appointmentsPage, completedPage, upcomingPage }) => {
+        this.appointments = appointmentsPage.content ?? [];
 
+        this.totalAppointmentsCount =
+          appointmentsPage.totalElements ?? 0;
+
+        this.completedAppointmentsCount =
+          completedPage.totalElements ?? 0;
+
+        this.upcomingAppointmentsCount =
+          upcomingPage.totalElements ?? 0;
+
+        this.upcomingAppointmentsList =
+          upcomingPage.content ?? [];
+
+        this.buildCalendar();
+
+        this.isLoading = false;
         this.cdr.markForCheck();
       },
       error: (error) => {
         console.error('Unable to load appointments:', error);
+
         this.errorMessage =
           'Unable to load your appointments. Please try again.';
-        this.isLoading = false;
 
+        this.isLoading = false;
         this.cdr.markForCheck();
       },
     });
   }
 
   get totalAppointments(): number {
-    return this.appointments.length;
+    return this.totalAppointmentsCount;
   }
 
   get upcomingAppointments(): Appointment[] {
-    return this.appointments
-      .filter(
-        (appointment) =>
-          appointment.status === 'SCHEDULED' &&
-          this.getAppointmentDateTime(appointment) >= new Date(),
-      )
-      .sort((a, b) =>
-        this.getAppointmentDateTime(a).getTime() -
-        this.getAppointmentDateTime(b).getTime(),
-      );
+    return this.upcomingAppointmentsList;
   }
 
   get upcomingCount(): number {
-    return this.upcomingAppointments.length;
+    return this.upcomingAppointmentsCount;
   }
 
   get completedCount(): number {
-    return this.appointments.filter(
-      (appointment) => appointment.status === 'COMPLETED',
-    ).length;
+    return this.completedAppointmentsCount;
   }
 
   get displayedAppointments(): Appointment[] {
@@ -172,6 +194,8 @@ export class PatientDashboard implements OnInit {
         return 'Completed';
       case 'CANCELLED':
         return 'Cancelled';
+      case 'NO_SHOW':
+        return 'No Show';
       default:
         return status;
     }
@@ -180,13 +204,15 @@ export class PatientDashboard implements OnInit {
   getStatusClasses(status: AppointmentStatus): string {
     switch (status) {
       case 'SCHEDULED':
-        return 'bg-[#E8F0E7] text-[#245640]';
+        return 'bg-surface-accent text-accent';
       case 'COMPLETED':
-        return 'bg-blue-50 text-blue-700';
+        return 'bg-info-soft text-info';
       case 'CANCELLED':
-        return 'bg-red-50 text-red-700';
+        return 'bg-danger-soft text-danger';
+      case 'NO_SHOW':
+        return 'bg-warning-soft text-warning';
       default:
-        return 'bg-gray-100 text-gray-700';
+        return 'bg-neutral-soft text-neutral';
     }
   }
 
@@ -253,18 +279,6 @@ export class PatientDashboard implements OnInit {
     });
   }
 
-  private getAppointmentDateTime(appointment: Appointment): Date {
-    const [year, month, day] = appointment.appointmentDate
-      .split('-')
-      .map(Number);
-
-    const [hours, minutes, seconds = 0] = appointment.startTime
-      .split(':')
-      .map(Number);
-
-    return new Date(year, month - 1, day, hours, minutes, seconds);
-  }
-
   private parseLocalDate(date: string): Date {
     const [year, month, day] = date.split('-').map(Number);
 
@@ -279,7 +293,7 @@ export class PatientDashboard implements OnInit {
     return `${year}-${month}-${day}`;
   }
 
-  
+
   parseAppointmentMonth(date: string): string {
     return new Intl.DateTimeFormat('en-US', {
       month: 'short',

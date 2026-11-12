@@ -2,7 +2,7 @@ import { Injectable, inject } from "@angular/core";
 import { HttpClient } from "@angular/common/http";
 import { Observable } from "rxjs";
 
-export interface Doctor{
+export interface Doctor {
     id: number;
     firstName: string;
     lastName: string;

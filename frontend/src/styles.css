@@ -4,34 +4,147 @@
  * Intended for Angular + Tailwind CSS v4.
  * You can merge this content into frontend/src/styles.css.
  */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
-@theme {
-  --color-brand-950: #183728;
-  --color-brand-900: #1f4030;
-  --color-brand-800: #244c3a;
-  --color-brand-700: #315b45;
-  --color-sage-600: #58745e;
-  --color-sage-500: #79947c;
-  --color-sage-200: #dce7dd;
-  --color-sage-100: #eef3ed;
-  --color-cream: #fffdfa;
-  --color-cream-strong: #fff8f0;
-  --color-beige-200: #e8e0d2;
-  --color-border-warm: #efe7dd;
-  --color-ink: #1a1a1a;
-  --color-muted: #6b5d55;
-  --color-highlight: #e8b84f;
 
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-display: "Playfair Display", Georgia, "Times New Roman", serif;
+@theme {
+  /* Brand colors */
+  --color-brand-950: #183728;
+  --color-brand-900: #194333;
+  --color-brand-800: #245640;
+  --color-brand-700: #315b45;
+
+  /* Sage colors */
+  --color-sage-600: #58745e;
+  --color-sage-500: #70947A;
+  --color-sage-200: #DCE3D8;
+  --color-sage-100: #E8F0E7;
+
+  /* Background colors */
+  --color-cream: #FAFBF8;
+  --color-cream-strong: #F5F7F3;
+  --color-white: #FFFFFF;
+
+  /* Borders */
+  --color-border-warm: #E6E9E0;
+
+  /* Text colors */
+  --color-ink: #243B30;
+  --color-muted: #718078;
+
+  /* Highlight */
+  --color-highlight: #E8B84F;
+
+  /* Typography */
+  --font-sans: "Inter", ui-sans-serif, system-ui,
+    -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/*
+ * Semantic theme tokens.
+ * Light values reproduce the original cream & green palette; the .dark block
+ * below re-points them. Use these (bg-surface, text-ink, border-line…) instead
+ * of hard-coded hex colors so every new screen supports dark mode for free.
+ */
+@theme {
+  /* Surfaces */
+  --color-page: #FAFBF8;
+  --color-surface: #FFFFFF;
+  --color-surface-muted: #F5F7F3;
+  --color-surface-accent: #EDF3EB;
+
+  /* Lines */
+  --color-line: #E6E9E0;
+  --color-line-strong: #DCE3D8;
+
+  /* Text (ink and muted are defined above) */
+  --color-body: #405448;
+  --color-subtle: #829087;
+  --color-accent: #245640;
+  --color-accent-hover: #315b45;
+
+  /* Filled actions (white text on top) */
+  --color-primary: #245640;
+  --color-primary-hover: #1B4532;
+
+  /* Sidebar & brand panel */
+  --color-sidebar: #194333;
+  --color-sidebar-ink: #E0EAE2;
+  --color-sidebar-muted: #B8CCBD;
+  --color-nav-active: #E7F0E6;
+  --color-nav-active-ink: #194333;
+
+  /* Status */
+  --color-success: var(--color-green-800);
+  --color-success-soft: var(--color-green-50);
+  --color-success-line: var(--color-green-200);
+  --color-info: var(--color-blue-700);
+  --color-info-soft: var(--color-blue-50);
+  --color-warning: var(--color-amber-700);
+  --color-warning-soft: var(--color-amber-50);
+  --color-danger: var(--color-red-700);
+  --color-danger-soft: var(--color-red-50);
+  --color-danger-line: var(--color-red-200);
+  --color-danger-solid: var(--color-red-600);
+  --color-danger-solid-hover: var(--color-red-700);
+  --color-neutral: var(--color-gray-700);
+  --color-neutral-soft: var(--color-gray-100);
+}
+
+/* Enables `dark:` utilities for one-off cases. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Dark palette: deep green-tinted charcoal derived from the brand greens.
+ * Every text/background pair meets WCAG AA (>= 4.5:1).
+ */
+:root.dark {
+  color-scheme: dark;
+
+  --color-ink: #E6EDE7;
+  --color-muted: #9AA89F;
+
+  --color-page: #0F1A15;
+  --color-surface: #16241D;
+  --color-surface-muted: #1C2D25;
+  --color-surface-accent: #21382C;
+
+  --color-line: #2A3B32;
+  --color-line-strong: #35493E;
+
+  --color-body: #C2CEC5;
+  --color-subtle: #85948B;
+  --color-accent: #8FC4A0;
+  --color-accent-hover: #A9D6B7;
+
+  --color-primary: #2E6A4D;
+  --color-primary-hover: #367A59;
+
+  --color-sidebar: #11241A;
+  --color-nav-active: #2A4A39;
+  --color-nav-active-ink: #D6EBDC;
+
+  --color-success: #9FD8B0;
+  --color-success-soft: #1B3326;
+  --color-success-line: #2C5A40;
+  --color-info: #9CC3EC;
+  --color-info-soft: #1B2C3D;
+  --color-warning: #E8C27A;
+  --color-warning-soft: #3A3020;
+  --color-danger: #F2A7A0;
+  --color-danger-soft: #3A1F1F;
+  --color-danger-line: #6B3430;
+  --color-danger-solid: #C53A32;
+  --color-danger-solid-hover: #D9483F;
+  --color-neutral: #C5CCC7;
+  --color-neutral-soft: #26302B;
 }
 
 :root {
   color-scheme: light;
   font-family: var(--font-sans);
-  background: var(--color-cream);
+  background: var(--color-page);
   color: var(--color-ink);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -42,11 +155,11 @@
 html,
 body {
   min-height: 100%;
+  margin: 0;
 }
 
 body {
-  margin: 0;
-  background: var(--color-cream);
+  background: var(--color-page);
   color: var(--color-ink);
   font-family: var(--font-sans);
 }
@@ -54,12 +167,15 @@ body {
 h1,
 h2,
 h3,
+h4,
+h5,
+h6,
 .font-display {
-  font-family: var(--font-display);
+  font-family: var(--font-sans);
 }
 
 :focus-visible {
-  outline: 3px solid #58745e;
+  outline: 3px solid var(--color-accent);
   outline-offset: 3px;
 }
 

@@ -2,17 +2,17 @@ import { Routes } from '@angular/router';
 import { authGuard } from './guards/auth-guard';
 
 export const routes: Routes = [
-    {
-        path:'',
-        pathMatch: 'full',
-        loadComponent:() =>
-            import('./pages/login/login').then((m) => m.Login),
-    },
-    {
+  {
+    path: '',
+    pathMatch: 'full',
+    loadComponent: () =>
+      import('./pages/login/login').then((m) => m.Login),
+  },
+  {
     path: 'register',
     loadComponent: () =>
       import('./pages/register/register').then((m) => m.Register),
-    },
+  },
   // Shared layout for all patient pages
   {
     path: '',
@@ -34,35 +34,33 @@ export const routes: Routes = [
           import('./pages/book-appointment/book-appointment')
             .then((m) => m.BookAppointment),
       },
-      ],
-    },
-    {
-    path: 'book-appointment',
-    canActivate: [authGuard],
-    data: { role: 'PATIENT' },
-    loadComponent: () =>
-        import('./pages/book-appointment/book-appointment')
-        .then((m) => m.BookAppointment),
-    },
-    {
+      {
+        path: 'my-appointments',
+        loadComponent: () => 
+          import('./pages/my-appointments/my-appointments')
+          .then((m) => m.MyAppointments)
+      }
+    ],
+  },
+  {
     path: 'doctor-dashboard',
     canActivate: [authGuard],
-    data: { role: 'DOCTOR'},
+    data: { role: 'DOCTOR' },
     loadComponent: () =>
       import('./pages/doctor-dashboard/doctor-dashboard')
         .then((m) => m.DoctorDashboard),
-    },
-    {
+  },
+  {
     path: 'admin-dashboard',
     canActivate: [authGuard],
-    data: { role: 'ADMIN'},
+    data: { role: 'ADMIN' },
     loadComponent: () =>
       import('./pages/admin-dashboard/admin-dashboard')
         .then((m) => m.AdminDashboard),
-    },
-    {
-        path: '**',
-        redirectTo: '',
-    }
-    
+  },
+  {
+    path: '**',
+    redirectTo: '',
+  }
+
 ];

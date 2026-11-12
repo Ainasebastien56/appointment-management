@@ -11,13 +11,37 @@ export interface AvailableSlot {
 }
 
 export interface AppointmentRequest {
-  doctorId: number;
+  doctorId?: number;
   appointmentDate: string;
   startTime: string;
   reason: string;
   notes?: string;
   type?: string;
 }
+
+export interface AppointmentResponse {
+  id: number;
+  patientId: number;
+  patientName: string;
+  doctorId: number;
+  doctorName: string;
+  appointmentDate: string;
+  startTime: string;
+  endTime: string;
+  type: string;
+  reason: string;
+  status: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AppointmentStatistics {
+  scheduledAppointments: number;
+  pendingOutcomes: number;
+  cancelledAppointments: number;
+}
+
 
 @Injectable({
   providedIn: 'root',
@@ -29,36 +53,71 @@ export class AppointmentService {
   getAvailableSlots(
     date: string,
     doctorId?: number,
-  ): Observable<AvailableSlot[]>{
+  ): Observable<AvailableSlot[]> {
     let params = new HttpParams().set('date', date);
 
-    if (doctorId !== undefined){
+    if (doctorId !== undefined) {
       params = params.set('doctorId', doctorId);
     }
 
     return this.http.get<AvailableSlot[]>(
       `${this.apiUrl}/available-slots`,
-      {params},
+      { params },
     );
   }
 
   createAppointment(
     request: AppointmentRequest
-  ): Observable<unknown> {
-    return this.http.post(this.apiUrl, request);
+  ): Observable<AppointmentResponse> {
+    return this.http.post<AppointmentResponse>(this.apiUrl, request);
+  }
+
+  cancelAppointment(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/${id}`);
   }
 
   getAppointments(
-    page =0 ,
-    size = 100): Observable<AppointmentPage> {
-    const params = new HttpParams()
+    page = 0,
+    size = 100,
+    status?: string,
+    upcomingOnly = false,
+    pendingOutcomeOnly = false,
+    pastOutcomeOnly = false,
+    doctorName?: string): Observable<AppointmentPage> {
+    let params = new HttpParams()
       .set('page', page)
       .set('size', size)
       .set('sort', 'appointmentDate,asc');
 
+    if (status) {
+      params = params.set('status', status);
+    }
+
+    if (doctorName?.trim()) {
+      params = params.set('doctorName', doctorName.trim());
+    }
+
+    if (upcomingOnly) {
+      params = params.set('upcomingOnly', true);
+    }
+
+    if (pendingOutcomeOnly) {
+      params = params.set('pendingOutcomeOnly', true);
+    }
+
+    if (pastOutcomeOnly) {
+      params = params.set('pastOutcomeOnly', true);
+    }
+
     return this.http.get<AppointmentPage>(
-      this.apiUrl, 
+      this.apiUrl,
       { params }
+    );
+  }
+
+  getMyAppointmentStatistics(): Observable<AppointmentStatistics> {
+    return this.http.get<AppointmentStatistics>(
+      `${this.apiUrl}/my-statistics`
     );
   }
 }

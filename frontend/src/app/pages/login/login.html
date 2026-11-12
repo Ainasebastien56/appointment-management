@@ -1,8 +1,12 @@
+<div class="fixed right-4 top-4 z-20 sm:right-6 sm:top-6">
+  <app-theme-toggle />
+</div>
 
-<main class="min-h-screen bg-cream lg:grid lg:grid-cols-2">
+
+<main class="min-h-screen bg-page lg:grid lg:grid-cols-2">
   <!-- Brand and introduction panel -->
   <section
-    class="relative hidden min-h-screen flex-col justify-between overflow-hidden bg-brand-950 p-12 text-white lg:flex xl:p-16"
+    class="relative hidden min-h-screen flex-col justify-between overflow-hidden bg-sidebar p-12 text-white lg:flex xl:p-16"
   >
     <div
       class="pointer-events-none absolute -right-32 -top-32 h-96 w-96 rounded-full bg-sage-500/20 blur-3xl"
@@ -114,12 +118,12 @@
 
   <!-- Login form -->
   <section
-    class="flex min-h-screen items-center justify-center bg-cream px-6 py-10 sm:px-10 lg:px-12 xl:px-20"
+    class="flex min-h-screen items-center justify-center bg-page px-6 py-10 sm:px-10 lg:px-12 xl:px-20"
   >
     <div class="w-full max-w-md">
       <a href="/" class="mb-10 flex items-center gap-3 lg:hidden">
         <span
-          class="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-800 text-white"
+          class="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-white"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -134,12 +138,12 @@
           </svg>
         </span>
 
-        <span class="text-xl font-bold text-brand-950">MediCare</span>
+        <span class="text-xl font-bold text-ink">MediCare</span>
       </a>
 
       <div class="mb-8">
         <p
-          class="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-brand-800"
+          class="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-accent"
         >
           YOUR HEALTHCARE SPACE
         </p>
@@ -176,7 +180,7 @@
             placeholder="you@example.com"
             autocomplete="email"
             required
-            class="w-full rounded-xl border border-border-warm bg-white px-4 py-3.5 text-ink outline-none transition placeholder:text-muted/60 hover:border-beige-200 focus:border-brand-800 focus:ring-4 focus:ring-brand-800/10"
+            class="w-full rounded-xl border border-line bg-surface px-4 py-3.5 text-ink outline-none transition placeholder:text-muted/60 hover:border-line focus:border-accent focus:ring-4 focus:ring-accent/15"
           />
         </div>
 
@@ -197,13 +201,13 @@
               placeholder="Enter your password"
               autocomplete="current-password"
               required
-              class="w-full rounded-xl border border-border-warm bg-white px-4 py-3.5 pr-24 text-ink outline-none transition placeholder:text-muted/60 hover:border-beige-200 focus:border-brand-800 focus:ring-4 focus:ring-brand-800/10"
+              class="w-full rounded-xl border border-line bg-surface px-4 py-3.5 pr-24 text-ink outline-none transition placeholder:text-muted/60 hover:border-line focus:border-accent focus:ring-4 focus:ring-accent/15"
             />
 
             <button
               type="button"
               (click)="togglePassword()"
-              class="absolute inset-y-0 right-3 my-auto rounded-lg px-2 text-sm font-semibold text-muted transition hover:bg-sage-100 hover:text-brand-950"
+              class="absolute inset-y-0 right-3 my-auto rounded-lg px-2 text-sm font-semibold text-muted transition hover:bg-surface-accent hover:text-ink"
               [attr.aria-label]="
                 showPassword ? 'Hide password' : 'Show password'
               "
@@ -224,7 +228,7 @@
                 type="checkbox"
                 [checked]="rememberMe"
                 (change)="onRememberMeChange($event)"
-                class="h-4 w-4 rounded border-beige-200 accent-brand-800 focus:ring-2 focus:ring-brand-800/20"
+                class="h-4 w-4 rounded border-line accent-primary focus:ring-2 focus:ring-accent/25"
             />
 
             <span>Remember me</span>
@@ -232,7 +236,7 @@
 
             <a
                 routerLink="/forgot-password"
-                class="text-sm font-semibold text-brand-800 transition hover:text-brand-700"
+                class="text-sm font-semibold text-accent transition hover:text-accent-hover"
             >
                 Forgot password?
             </a>
@@ -241,7 +245,7 @@
         @if (error) {
           <p
             role="alert"
-            class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700"
+            class="rounded-xl border border-danger-line bg-danger-soft p-4 text-sm leading-6 text-danger"
           >
             {{ error }}
           </p>
@@ -249,7 +253,7 @@
 
         <button
           type="submit"
-          class="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-800 px-5 py-3.5 font-semibold text-white shadow-lg shadow-brand-800/15 transition hover:bg-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-800/20 active:scale-[0.99]"
+          class="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3.5 font-semibold text-white shadow-lg shadow-primary/15 transition hover:bg-primary-hover focus:outline-none focus:ring-4 focus:ring-accent/25 active:scale-[0.99]"
           [disabled]="loginForm.invalid || isSubmitting"
         >
           {{ isSubmitting ? 'Signing in...' : 'Sign in' }}
@@ -270,7 +274,7 @@
         @if (notice) {
           <p
             role="status"
-            class="rounded-xl border border-sage-200 bg-sage-100 p-4 text-sm leading-6 text-brand-950"
+            class="rounded-xl border border-line-strong bg-surface-accent p-4 text-sm leading-6 text-ink"
           >
             {{ notice }}
           </p>
@@ -278,18 +282,18 @@
       </form>
 
       <div class="my-8 flex items-center gap-4">
-        <div class="h-px flex-1 bg-beige-200"></div>
+        <div class="h-px flex-1 bg-line"></div>
         <span
           class="text-xs font-medium uppercase tracking-wider text-muted"
         >
           Secure access
         </span>
-        <div class="h-px flex-1 bg-beige-200"></div>
+        <div class="h-px flex-1 bg-line"></div>
       </div>
 
       <p class="text-center text-sm leading-6 text-muted">
         Need help accessing your account?
-        <span class="font-semibold text-brand-800">
+        <span class="font-semibold text-accent">
           Contact your administrator.
         </span>
       </p>
@@ -299,7 +303,7 @@
 
         <a
             routerLink="/register"
-            class="font-semibold text-brand-800 transition hover:text-brand-700"
+            class="font-semibold text-accent transition hover:text-accent-hover"
             >
             Create an account
         </a>

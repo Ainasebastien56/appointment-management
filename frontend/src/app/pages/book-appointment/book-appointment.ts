@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, ChangeDetectorRef} from '@angular/core';
+import { Component, OnInit, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -25,9 +25,10 @@ export class BookAppointment implements OnInit {
 
   selectedDoctorId: number | null = null;
   selectedDate = this.getLocalDate()
-  selectedSlot : AvailableSlot | null = null;
+  selectedSlot: AvailableSlot | null = null;
   reason = '';
   notes = '';
+  assignedDoctorName = '';
 
   isLoadingDoctors = false;
   isLoadingSlots = false;
@@ -42,7 +43,7 @@ export class BookAppointment implements OnInit {
     this.loadDoctors();
   }
 
-  private getLocalDate():string{
+  private getLocalDate(): string {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -56,16 +57,16 @@ export class BookAppointment implements OnInit {
     this.errorMessage = '';
 
     this.doctorService.getDoctors().subscribe({
-      next: (doctors) =>{
+      next: (doctors) => {
         this.doctors = doctors;
         this.isLoadingDoctors = false;
 
         this.cdr.markForCheck();
 
         this.loadSlots();
-        
+
       },
-      error: () =>{
+      error: () => {
         this.isLoadingDoctors = false;
         this.errorMessage = 'Unable to load doctors. Please try again.';
 
@@ -75,61 +76,61 @@ export class BookAppointment implements OnInit {
 
   }
 
-    onCriteriaChange(): void {
+  onCriteriaChange(): void {
     this.selectedSlot = null;
     this.successMessage = '';
     this.loadSlots();
   }
 
-loadSlots(): void {
-  if (!this.selectedDate) {
-    this.slots = [];
+  loadSlots(): void {
+    if (!this.selectedDate) {
+      this.slots = [];
+      this.selectedSlot = null;
+      this.isLoadingSlots = false;
+      return;
+    }
+
+    if (this.selectedDate < this.minDate) {
+      this.slots = [];
+      this.selectedSlot = null;
+      this.isLoadingSlots = false;
+      this.errorMessage = 'Please select a valid appointment date.';
+      return;
+    }
+
+    this.isLoadingSlots = true;
+    this.errorMessage = '';
     this.selectedSlot = null;
-    this.isLoadingSlots = false;
-    return;
+
+    const doctorId = this.selectedDoctorId ?? undefined;
+
+    this.appointmentService
+      .getAvailableSlots(this.selectedDate, doctorId)
+      .subscribe({
+        next: (slots) => {
+          this.slots = slots;
+          this.isLoadingSlots = false;
+
+          this.cdr.markForCheck();
+        },
+        error: (error) => {
+          this.slots = [];
+          this.isLoadingSlots = false;
+          this.errorMessage =
+            'Unable to load available time slots. Please try again.';
+
+          this.cdr.markForCheck();
+        },
+      });
   }
 
-  if (this.selectedDate < this.minDate) {
-    this.slots = [];
-    this.selectedSlot = null;
-    this.isLoadingSlots = false;
-    this.errorMessage = 'Please select a valid appointment date.';
-    return;
-  }
-
-  this.isLoadingSlots = true;
-  this.errorMessage = '';
-  this.selectedSlot = null;
-
-  const doctorId = this.selectedDoctorId ?? undefined;
-
-  this.appointmentService
-    .getAvailableSlots(this.selectedDate, doctorId)
-    .subscribe({
-      next: (slots) => {
-        this.slots = slots;
-        this.isLoadingSlots = false;
-
-        this.cdr.markForCheck();
-      },
-      error: (error) => {
-        this.slots = [];
-        this.isLoadingSlots = false;
-        this.errorMessage =
-          'Unable to load available time slots. Please try again.';
-
-        this.cdr.markForCheck();
-      },
-    });
-}
-
-   selectSlot(slot: AvailableSlot): void {
+  selectSlot(slot: AvailableSlot): void {
     this.selectedSlot = slot;
     this.errorMessage = '';
     this.successMessage = '';
   }
 
-    submitAppointment(): void {
+  submitAppointment(): void {
     if (
       !this.selectedDate ||
       !this.selectedSlot ||
@@ -150,19 +151,24 @@ loadSlots(): void {
     this.errorMessage = '';
     this.successMessage = '';
 
+    const request = {
+      ...(this.selectedDoctorId !== null
+        ? { doctorId: this.selectedDoctorId }
+        : {}),
+      appointmentDate: this.selectedDate,
+      startTime: this.selectedSlot.startTime,
+      reason: this.reason.trim(),
+      notes: this.notes.trim() || undefined,
+    };
+
     this.appointmentService
-      .createAppointment({
-        doctorId: this.selectedSlot.doctorId,
-        appointmentDate: this.selectedDate,
-        startTime: this.selectedSlot.startTime,
-        reason: this.reason.trim(),
-        notes: this.notes.trim() || undefined,
-      })
+      .createAppointment(request)
       .subscribe({
-        next: () => {
+        next: (appointment) => {
           this.isSubmitting = false;
           this.successMessage =
-            'Your appointment has been booked successfully.';
+            `Your appointment has been booked successfully. Assigned doctor: Dr.
+            ${appointment.doctorName}`;
 
           this.reason = '';
           this.notes = '';

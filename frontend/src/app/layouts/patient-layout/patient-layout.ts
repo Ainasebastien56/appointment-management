@@ -6,12 +6,13 @@ import {
   RouterOutlet
 } from '@angular/router';
 
+import { ThemeToggle } from '../../components/theme-toggle/theme-toggle';
 import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-patient-layout',
   standalone:true,
-  imports: [RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, ThemeToggle],
   templateUrl: './patient-layout.html',
   styleUrl: './patient-layout.css',
 })

@@ -4,23 +4,23 @@ import { Observable } from "rxjs";
 
 export type UserRole = 'PATIENT' | 'DOCTOR' | 'ADMIN';
 
-export interface RegistrationRequest{
-    firstName: string;
-    lastName: string;
-    email: string;
-    dateOfBirth: string;
-    gender: string;
-    phone: string;
-    password: string;
+export interface RegistrationRequest {
+  firstName: string;
+  lastName: string;
+  email: string;
+  dateOfBirth: string;
+  gender: string;
+  phone: string;
+  password: string;
 }
 
-export interface RegistrationResponse{
-    userId: number;
-    patientId: number;
-    email: string;
-    firstName: string;
-    lastName: string;
-    role: string;
+export interface RegistrationResponse {
+  userId: number;
+  patientId: number;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: string;
 }
 
 export interface LoginRequest {
@@ -34,32 +34,32 @@ export interface LoginResponse {
 }
 
 @Injectable({
-    providedIn: 'root',
+  providedIn: 'root',
 })
 
-export class AuthService{
+export class AuthService {
 
-    private readonly apiUrl = 'http://localhost:8080/api/auth';
+  private readonly apiUrl = 'http://localhost:8080/api/auth';
 
-    constructor(private readonly http: HttpClient) {}
+  constructor(private readonly http: HttpClient) { }
 
-    register(
-        request: RegistrationRequest
-    ): Observable<RegistrationResponse>{
-        return this.http.post<RegistrationResponse>(
-            `${this.apiUrl}/register`,
-            request
-        );
-    }
-
-    login(request: LoginRequest): Observable<LoginResponse> {
-         return this.http.post<LoginResponse>(
-            `${this.apiUrl}/login`,
-            request,
+  register(
+    request: RegistrationRequest
+  ): Observable<RegistrationResponse> {
+    return this.http.post<RegistrationResponse>(
+      `${this.apiUrl}/register`,
+      request
     );
   }
 
-    getRoleFromToken(token: string): UserRole | null {
+  login(request: LoginRequest): Observable<LoginResponse> {
+    return this.http.post<LoginResponse>(
+      `${this.apiUrl}/login`,
+      request,
+    );
+  }
+
+  getRoleFromToken(token: string): UserRole | null {
     try {
       const parts = token.split('.');
 
@@ -107,35 +107,35 @@ export class AuthService{
     }
   }
 
-    getStoredToken(): string | null {
-        return (
-        localStorage.getItem('access_token') ??
-        sessionStorage.getItem('access_token')
-        );
+  getStoredToken(): string | null {
+    return (
+      localStorage.getItem('access_token') ??
+      sessionStorage.getItem('access_token')
+    );
+  }
+
+  getCurrentRole(): UserRole | null {
+    const token = this.getStoredToken();
+
+    return token ? this.getRoleFromToken(token) : null;
+  }
+
+  getDashboardUrl(role: UserRole): string {
+    switch (role) {
+      case 'PATIENT':
+        return '/patient-dashboard';
+      case 'DOCTOR':
+        return '/doctor-dashboard';
+      case 'ADMIN':
+        return '/admin-dashboard';
     }
+  }
 
-    getCurrentRole(): UserRole | null {
-        const token = this.getStoredToken();
+  logout(): void {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('token_type');
 
-        return token ? this.getRoleFromToken(token) : null;
-    }
-
-    getDashboardUrl(role: UserRole): string {
-        switch (role) {
-        case 'PATIENT':
-            return '/patient-dashboard';
-        case 'DOCTOR':
-            return '/doctor-dashboard';
-        case 'ADMIN':
-            return '/admin-dashboard';
-        }
-    }
-
-    logout(): void {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('token_type');
-
-        sessionStorage.removeItem('access_token');
-        sessionStorage.removeItem('token_type');
-    }
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('token_type');
+  }
 }
