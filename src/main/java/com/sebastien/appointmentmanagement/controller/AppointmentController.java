@@ -272,6 +272,8 @@ public class AppointmentController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void cancelAppointment(
             @PathVariable Long id,
+            // Corps facultatif : permet de fournir un motif d'annulation.
+            @Valid @RequestBody(required = false) CancelAppointmentRequest request,
             Authentication authentication
     ) {
         // Récupère le compte connecté depuis le JWT.
@@ -293,8 +295,9 @@ public class AppointmentController {
         // Applique les règles métier : propriétaire, statut et délai de deux heures.
         appointmentService.cancelAppointment(
                 id,
-                user.getRole(),
-                patient
+                user,
+                patient,
+                request == null ? null : request.getReason()
         );
     }
 

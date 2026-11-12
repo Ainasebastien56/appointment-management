@@ -232,9 +232,43 @@ class AppointmentControllerTest {
                 .andExpect(status().isNoContent());
 
         verify(appointmentService).cancelAppointment(
+                eq(1L),
+                argThat(user -> user.getRole() == UserRole.ADMIN),
+                isNull(),
+                isNull()
+        );
+    }
+
+    @Test
+    void shouldForwardOptionalCancellationReasonForPatient() throws Exception {
+
+        User patientUser = new User(
+                "patient@example.com",
+                "test-password",
+                UserRole.PATIENT
+        );
+
+        Patient patient = mock(Patient.class);
+
+        when(currentUserService.requireUser(anyString()))
+                .thenReturn(patientUser);
+
+        when(currentUserService.requirePatientProfile(patientUser))
+                .thenReturn(patient);
+
+        mockMvc.perform(
+                        delete("/api/appointments/1")
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"reason\":\"I have a work conflict.\"}")
+                )
+                .andExpect(status().isNoContent());
+
+        verify(appointmentService).cancelAppointment(
                 1L,
-                UserRole.ADMIN,
-                null
+                patientUser,
+                patient,
+                "I have a work conflict."
         );
     }
 
@@ -243,9 +277,10 @@ class AppointmentControllerTest {
             throws Exception {
 
         when(appointmentService.cancelAppointment(
-                999L,
-                UserRole.ADMIN,
-                null
+                eq(999L),
+                any(User.class),
+                isNull(),
+                isNull()
         )).thenThrow(new AppointmentNotFoundException(999L));
 
         mockMvc.perform(delete("/api/appointments/999"))
@@ -597,6 +632,54 @@ class AppointmentControllerTest {
                 doctor,
                 null
         );
+    }
+
+    @Test
+    void shouldCancelAppointmentAsAssignedDoctorWithReason() throws Exception {
+
+        User doctorUser = new User(
+                "doctor@example.com",
+                "test-password",
+                UserRole.DOCTOR
+        );
+
+        Doctor doctor = mock(Doctor.class);
+
+        when(currentUserService.requireUser(anyString()))
+                .thenReturn(doctorUser);
+
+        when(currentUserService.requireDoctorProfile(doctorUser))
+                .thenReturn(doctor);
+
+        UpdateAppointmentStatusRequest request =
+                new UpdateAppointmentStatusRequest();
+        request.setStatus(AppointmentStatus.CANCELLED);
+        request.setChangeReason("Doctor unavailable due to an emergency.");
+
+        AppointmentResponse response =
+                createResponse(1L, AppointmentStatus.CANCELLED);
+        response.setCancellationReason("Doctor unavailable due to an emergency.");
+
+        when(appointmentService.updateAppointmentStatus(
+                eq(1L),
+                eq(AppointmentStatus.CANCELLED),
+                eq(doctorUser),
+                eq(doctor),
+                eq("Doctor unavailable due to an emergency.")
+        )).thenReturn(response);
+
+        mockMvc.perform(
+                        patch("/api/appointments/1/status")
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request))
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.cancellationReason")
+                        .value("Doctor unavailable due to an emergency."));
+
+        verify(currentUserService).requireDoctorProfile(doctorUser);
     }
 
     @Test

@@ -12,7 +12,9 @@ import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Root;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -78,6 +80,7 @@ public class AppointmentService {
         response.setReason(appointment.getReason());
         response.setStatus(appointment.getStatus());
         response.setNotes(appointment.getNotes());
+        response.setCancellationReason(appointment.getCancellationReason());
         response.setCreatedAt(appointment.getCreatedAt());
         response.setUpdatedAt(appointment.getUpdatedAt());
 
@@ -454,17 +457,51 @@ public class AppointmentService {
                 upcomingOnly, pendingOutcomeOnly, pastOutcomeOnly
         );
 
+        // Le plus proche d'abord pour les rendez-vous à venir et l'agenda
+        // d'une journée, le plus récent d'abord pour tout le reste.
+        boolean chronological = upcomingOnly || date != null;
+
+        Pageable sortedPageable = withDefaultSort(
+                pageable,
+                chronological ? Sort.Direction.ASC : Sort.Direction.DESC
+        );
+
         // Limite obligatoirement les résultats au médecin identifié par le serveur.
         return getAppointmentsScoped(
                 null,
                 doctorId,
                 null,
                 status,
-                pageable,
+                sortedPageable,
                 upcomingOnly,
                 pendingOutcomeOnly,
                 pastOutcomeOnly,
                 date
+        );
+    }
+
+    // Applique un tri par date puis heure de début si le client n'en fournit pas.
+    private Pageable withDefaultSort(
+            Pageable pageable,
+            Sort.Direction direction) {
+
+        if (pageable.getSort().isSorted()) {
+            return pageable;
+        }
+
+        Sort defaultSort = Sort.by(
+                new Sort.Order(direction, "appointmentDate"),
+                new Sort.Order(direction, "startTime")
+        );
+
+        if (pageable.isUnpaged()) {
+            return Pageable.unpaged(defaultSort);
+        }
+
+        return PageRequest.of(
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                defaultSort
         );
     }
 
@@ -950,13 +987,34 @@ public class AppointmentService {
             );
         }
 
-        // Les résultats autorisés sont COMPLETED et NO_SHOW.
+        // Les statuts autorisés sont COMPLETED, NO_SHOW et CANCELLED.
         if (newStatus != AppointmentStatus.COMPLETED
-                && newStatus != AppointmentStatus.NO_SHOW) {
+                && newStatus != AppointmentStatus.NO_SHOW
+                && newStatus != AppointmentStatus.CANCELLED) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Only COMPLETED or NO_SHOW status is allowed."
+                    "Only COMPLETED, NO_SHOW or CANCELLED status is allowed."
             );
+        }
+
+        boolean isCancellation = newStatus == AppointmentStatus.CANCELLED;
+
+        if (isCancellation) {
+            // Les administrateurs annulent via DELETE /api/appointments/{id}.
+            if (role != UserRole.DOCTOR) {
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Only doctors can cancel appointments through this endpoint."
+                );
+            }
+
+            // Le motif est obligatoire : il est communiqué au patient.
+            if (changeReason == null || changeReason.isBlank()) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "A reason is required to cancel an appointment."
+                );
+            }
         }
 
         // Recherche le rendez-vous.
@@ -989,7 +1047,34 @@ public class AppointmentService {
                 previousStatus == AppointmentStatus.COMPLETED
                         || previousStatus == AppointmentStatus.NO_SHOW;
 
-        if (isAdministrativeCorrection) {
+        if (isCancellation) {
+
+            // Seuls les rendez-vous planifiés peuvent être annulés.
+            if (previousStatus != AppointmentStatus.SCHEDULED) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Only scheduled appointments can be cancelled."
+                );
+            }
+
+            // Un rendez-vous déjà commencé ne peut plus être annulé.
+            LocalDateTime appointmentStart = LocalDateTime.of(
+                    appointment.getAppointmentDate(),
+                    appointment.getStartTime()
+            );
+
+            if (!appointmentStart.isAfter(LocalDateTime.now())) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Appointments that have already started cannot be cancelled."
+                );
+            }
+
+            // Conserve le motif sur le rendez-vous pour l'afficher au patient.
+            changeReason = changeReason.trim();
+            appointment.setCancellationReason(changeReason);
+
+        } else if (isAdministrativeCorrection) {
 
             // Seul un administrateur peut corriger un résultat déjà enregistré.
             if (role != UserRole.ADMIN) {
@@ -1126,14 +1211,26 @@ public class AppointmentService {
 
     /**
      * Cancels a scheduled appointment.
-     * The requester role and patient profile must be resolved
+     * The requester and patient profile must be resolved
      * by the trusted backend authentication layer.
+     * The reason is optional and recorded in the status history.
      */
     public AppointmentResponse cancelAppointment(
             Long id,
-            UserRole requesterRole,
-            Patient requestingPatient
+            User requester,
+            Patient requestingPatient,
+            String reason
     ) {
+        // Vérifie que l'utilisateur authentifié existe.
+        if (requester == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "An authenticated user is required."
+            );
+        }
+
+        UserRole requesterRole = requester.getRole();
+
         // Seuls les patients et les administrateurs peuvent annuler.
         if (requesterRole != UserRole.PATIENT
                 && requesterRole != UserRole.ADMIN) {
@@ -1192,11 +1289,27 @@ public class AppointmentService {
             }
         }
 
+        // Un motif vide est traité comme absent.
+        String cancellationReason =
+                reason == null || reason.isBlank() ? null : reason.trim();
+
         // Conserve le rendez-vous en base avec le statut CANCELLED.
         appointment.setStatus(AppointmentStatus.CANCELLED);
+        appointment.setCancellationReason(cancellationReason);
 
         Appointment cancelledAppointment =
                 appointmentRepository.save(appointment);
+
+        // Enregistre l'annulation dans l'historique des statuts.
+        appointmentStatusHistoryRepository.save(
+                new AppointmentStatusHistory(
+                        appointment,
+                        AppointmentStatus.SCHEDULED,
+                        AppointmentStatus.CANCELLED,
+                        requester,
+                        cancellationReason
+                )
+        );
 
         return toResponse(cancelledAppointment);
     }
