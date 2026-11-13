@@ -16,12 +16,7 @@ import {
   parseLocalDate,
 } from '../../utils/appointment-format';
 
-type DoctorAppointmentTab =
-  | 'TODAY'
-  | 'UPCOMING'
-  | 'PENDING_OUTCOME'
-  | 'PAST'
-  | 'CANCELLED';
+type DoctorAppointmentTab = 'TODAY' | 'UPCOMING' | 'PENDING_OUTCOME' | 'PAST' | 'CANCELLED';
 
 interface TabDefinition {
   id: DoctorAppointmentTab;
@@ -273,26 +268,24 @@ export class DoctorAppointments implements OnInit {
     this.isSubmittingAction = true;
     this.actionError = '';
 
-    this.appointmentService
-      .updateAppointmentStatus(appointment.id, status, reason)
-      .subscribe({
-        next: () => {
-          this.isSubmittingAction = false;
-          this.pendingAction = null;
-          this.actionReason = '';
+    this.appointmentService.updateAppointmentStatus(appointment.id, status, reason).subscribe({
+      next: () => {
+        this.isSubmittingAction = false;
+        this.pendingAction = null;
+        this.actionReason = '';
 
-          // Le rendez-vous change d'onglet : on recharge la liste.
-          this.loadAppointments();
-        },
-        error: (error) => {
-          console.error('Error updating appointment status:', error);
+        // Le rendez-vous change d'onglet : on recharge la liste.
+        this.loadAppointments();
+      },
+      error: (error) => {
+        console.error('Error updating appointment status:', error);
 
-          this.actionError =
-            error.error?.message ?? 'Unable to update this appointment. Please try again.';
-          this.isSubmittingAction = false;
-          this.cdr.markForCheck();
-        },
-      });
+        this.actionError =
+          error.error?.message ?? 'Unable to update this appointment. Please try again.';
+        this.isSubmittingAction = false;
+        this.cdr.markForCheck();
+      },
+    });
   }
 
   // --- Notes ---
@@ -320,11 +313,7 @@ export class DoctorAppointments implements OnInit {
   get canSaveNotes(): boolean {
     const trimmed = this.notesDraft.trim();
 
-    return (
-      !this.isSavingNotes &&
-      trimmed.length > 0 &&
-      trimmed.length <= MAX_NOTES_LENGTH
-    );
+    return !this.isSavingNotes && trimmed.length > 0 && trimmed.length <= MAX_NOTES_LENGTH;
   }
 
   saveNotes(appointment: Appointment): void {
@@ -351,8 +340,7 @@ export class DoctorAppointments implements OnInit {
         error: (error) => {
           console.error('Error saving appointment notes:', error);
 
-          this.notesError =
-            error.error?.message ?? 'Unable to save the notes. Please try again.';
+          this.notesError = error.error?.message ?? 'Unable to save the notes. Please try again.';
           this.isSavingNotes = false;
           this.cdr.markForCheck();
         },

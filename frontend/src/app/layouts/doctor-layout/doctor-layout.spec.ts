@@ -14,10 +14,7 @@ describe('DoctorLayout', () => {
 
     await TestBed.configureTestingModule({
       imports: [DoctorLayout],
-      providers: [
-        provideRouter([]),
-        { provide: AuthService, useValue: authService },
-      ],
+      providers: [provideRouter([]), { provide: AuthService, useValue: authService }],
     }).compileComponents();
 
     fixture = TestBed.createComponent(DoctorLayout);
@@ -30,9 +27,7 @@ describe('DoctorLayout', () => {
   });
 
   it('should show the doctor navigation links', () => {
-    const links: HTMLAnchorElement[] = Array.from(
-      fixture.nativeElement.querySelectorAll('nav a'),
-    );
+    const links: HTMLAnchorElement[] = Array.from(fixture.nativeElement.querySelectorAll('nav a'));
     const hrefs = links.map((link) => link.getAttribute('href'));
 
     expect(hrefs).toContain('/doctor-dashboard');

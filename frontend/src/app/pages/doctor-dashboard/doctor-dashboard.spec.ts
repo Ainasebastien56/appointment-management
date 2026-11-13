@@ -80,10 +80,7 @@ describe('DoctorDashboard', () => {
 
     await TestBed.configureTestingModule({
       imports: [DoctorDashboard],
-      providers: [
-        provideRouter([]),
-        { provide: AppointmentService, useValue: appointmentService },
-      ],
+      providers: [provideRouter([]), { provide: AppointmentService, useValue: appointmentService }],
     }).compileComponents();
   });
 
@@ -106,8 +103,7 @@ describe('DoctorDashboard', () => {
     mockSuccess();
 
     const element = await render();
-    const text = (selector: string) =>
-      element.querySelector(selector)?.textContent?.trim();
+    const text = (selector: string) => element.querySelector(selector)?.textContent?.trim();
 
     expect(text('[data-testid="stat-today"]')).toBe('3');
     expect(text('[data-testid="stat-upcoming"]')).toBe('7');
@@ -119,9 +115,7 @@ describe('DoctorDashboard', () => {
   });
 
   it('should show an error and reload on retry', async () => {
-    appointmentService.getMyDoctorStatistics.mockReturnValue(
-      throwError(() => new Error('boom')),
-    );
+    appointmentService.getMyDoctorStatistics.mockReturnValue(throwError(() => new Error('boom')));
     appointmentService.getAppointments.mockReturnValue(of(createPage([])));
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
 

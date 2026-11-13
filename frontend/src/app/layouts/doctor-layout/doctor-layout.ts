@@ -1,10 +1,5 @@
 import { Component, inject } from '@angular/core';
-import {
-  Router,
-  RouterLink,
-  RouterLinkActive,
-  RouterOutlet,
-} from '@angular/router';
+import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 
 import { ThemeToggle } from '../../components/theme-toggle/theme-toggle';
 import { AuthService } from '../../services/auth.service';
