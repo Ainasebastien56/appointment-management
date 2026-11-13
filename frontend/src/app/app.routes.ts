@@ -57,6 +57,12 @@ export const routes: Routes = [
           import('./pages/doctor-dashboard/doctor-dashboard')
             .then((m) => m.DoctorDashboard),
       },
+      {
+        path: 'doctor-appointments',
+        loadComponent: () =>
+          import('./pages/doctor-appointments/doctor-appointments')
+            .then((m) => m.DoctorAppointments),
+      },
     ],
   },
   {
