@@ -10,11 +10,13 @@ import com.sebastien.appointmentmanagement.entity.*;
 import com.sebastien.appointmentmanagement.exception.AppointmentNotFoundException;
 import com.sebastien.appointmentmanagement.service.AppointmentService;
 import com.sebastien.appointmentmanagement.service.CurrentUserService;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -37,6 +39,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -533,6 +536,40 @@ class AppointmentControllerTest {
                 null,
                 null
         );
+    }
+
+    @Test
+    void shouldReturnConflictWithoutSqlDetailsOnDataIntegrityViolation() throws Exception {
+
+        UpdateAppointmentStatusRequest request =
+                new UpdateAppointmentStatusRequest();
+
+        request.setStatus(AppointmentStatus.COMPLETED);
+
+        // Simule une contrainte violée en base, avec le message brut de Hibernate.
+        when(appointmentService.updateAppointmentStatus(
+                eq(1L),
+                eq(AppointmentStatus.COMPLETED),
+                any(User.class),
+                isNull(),
+                isNull()
+        )).thenThrow(new DataIntegrityViolationException(
+                "could not execute statement [update appointment set status=? where id=?]"
+        ));
+
+        mockMvc.perform(
+                        patch("/api/appointments/1/status")
+                                .with(csrf())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(objectMapper.writeValueAsString(request))
+                )
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.message")
+                        .value("The request conflicts with existing data."))
+                .andExpect(content().string(
+                        Matchers.not(Matchers.containsString("update appointment"))
+                ));
     }
 
     @Test

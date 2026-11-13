@@ -5,10 +5,17 @@ import { RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
 
 import { AppointmentService } from '../../services/appointment.service';
+import { Appointment } from '../../models/appointment.model';
 import {
-  Appointment,
-  AppointmentStatus,
-} from '../../models/appointment.model';
+  formatTime,
+  getLocalDate,
+  getStatusClasses,
+  getStatusLabel,
+  parseLocalDate,
+} from '../../utils/appointment-format';
+
+// Le patient voit ses rendez-vous dans l'ordre chronologique.
+const PATIENT_SORT = 'appointmentDate,asc';
 
 interface CalendarDay {
   date: string;
@@ -39,8 +46,12 @@ export class PatientDashboard implements OnInit {
   isLoading = true;
   errorMessage = '';
 
+  readonly today = getLocalDate(new Date());
 
-  readonly today = this.getLocalDate(new Date());
+  // Helpers d'affichage exposés au template
+  readonly getStatusLabel = getStatusLabel;
+  readonly getStatusClasses = getStatusClasses;
+  readonly formatTime = formatTime;
 
   currentMonth = new Date(
     new Date().getFullYear(),
@@ -60,18 +71,23 @@ export class PatientDashboard implements OnInit {
     this.errorMessage = '';
 
     forkJoin({
-      appointmentsPage: this.appointmentService.getAppointments(0, 100),
-      completedPage: this.appointmentService.getAppointments(
-        0,
-        1,
-        'COMPLETED',
-      ),
-      upcomingPage: this.appointmentService.getAppointments(
-        0,
-        5,
-        undefined,
-        true,
-      ),
+      appointmentsPage: this.appointmentService.getAppointments({
+        page: 0,
+        size: 100,
+        sort: PATIENT_SORT,
+      }),
+      completedPage: this.appointmentService.getAppointments({
+        page: 0,
+        size: 1,
+        status: 'COMPLETED',
+        sort: PATIENT_SORT,
+      }),
+      upcomingPage: this.appointmentService.getAppointments({
+        page: 0,
+        size: 5,
+        upcomingOnly: true,
+        sort: PATIENT_SORT,
+      }),
     }).subscribe({
       next: ({ appointmentsPage, completedPage, upcomingPage }) => {
         this.appointments = appointmentsPage.content ?? [];
@@ -151,7 +167,7 @@ export class PatientDashboard implements OnInit {
       month: 'long',
       day: 'numeric',
       year: 'numeric',
-    }).format(this.parseLocalDate(this.selectedDate));
+    }).format(parseLocalDate(this.selectedDate));
   }
 
   get hasAppointmentsOnSelectedDate(): boolean {
@@ -186,52 +202,12 @@ export class PatientDashboard implements OnInit {
     this.selectedDate = null;
   }
 
-  getStatusLabel(status: AppointmentStatus): string {
-    switch (status) {
-      case 'SCHEDULED':
-        return 'Scheduled';
-      case 'COMPLETED':
-        return 'Completed';
-      case 'CANCELLED':
-        return 'Cancelled';
-      case 'NO_SHOW':
-        return 'No Show';
-      default:
-        return status;
-    }
-  }
-
-  getStatusClasses(status: AppointmentStatus): string {
-    switch (status) {
-      case 'SCHEDULED':
-        return 'bg-surface-accent text-accent';
-      case 'COMPLETED':
-        return 'bg-info-soft text-info';
-      case 'CANCELLED':
-        return 'bg-danger-soft text-danger';
-      case 'NO_SHOW':
-        return 'bg-warning-soft text-warning';
-      default:
-        return 'bg-neutral-soft text-neutral';
-    }
-  }
-
   formatAppointmentDate(date: string): string {
     return new Intl.DateTimeFormat('en-US', {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
-    }).format(this.parseLocalDate(date));
-  }
-
-  formatTime(time: string): string {
-    const [hours, minutes] = time.split(':').map(Number);
-    const date = new Date(2000, 0, 1, hours, minutes);
-
-    return new Intl.DateTimeFormat('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(date);
+    }).format(parseLocalDate(date));
   }
 
   private buildCalendar(): void {
@@ -265,7 +241,7 @@ export class PatientDashboard implements OnInit {
         calendarStart.getDate() + index,
       );
 
-      const dateString = this.getLocalDate(date);
+      const dateString = getLocalDate(date);
       const appointmentCount = appointmentCounts.get(dateString) ?? 0;
 
       return {
@@ -279,25 +255,10 @@ export class PatientDashboard implements OnInit {
     });
   }
 
-  private parseLocalDate(date: string): Date {
-    const [year, month, day] = date.split('-').map(Number);
-
-    return new Date(year, month - 1, day);
-  }
-
-  private getLocalDate(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-
-    return `${year}-${month}-${day}`;
-  }
-
-
   parseAppointmentMonth(date: string): string {
     return new Intl.DateTimeFormat('en-US', {
       month: 'short',
-    }).format(this.parseLocalDate(date));
+    }).format(parseLocalDate(date));
   }
 
 }

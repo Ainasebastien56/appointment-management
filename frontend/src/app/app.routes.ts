@@ -42,13 +42,28 @@ export const routes: Routes = [
       }
     ],
   },
+  // Shared layout for all doctor pages
   {
-    path: 'doctor-dashboard',
+    path: '',
     canActivate: [authGuard],
     data: { role: 'DOCTOR' },
     loadComponent: () =>
-      import('./pages/doctor-dashboard/doctor-dashboard')
-        .then((m) => m.DoctorDashboard),
+      import('./layouts/doctor-layout/doctor-layout')
+        .then((m) => m.DoctorLayout),
+    children: [
+      {
+        path: 'doctor-dashboard',
+        loadComponent: () =>
+          import('./pages/doctor-dashboard/doctor-dashboard')
+            .then((m) => m.DoctorDashboard),
+      },
+      {
+        path: 'doctor-appointments',
+        loadComponent: () =>
+          import('./pages/doctor-appointments/doctor-appointments')
+            .then((m) => m.DoctorAppointments),
+      },
+    ],
   },
   {
     path: 'admin-dashboard',
