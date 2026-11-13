@@ -3,7 +3,8 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 
 import { AppointmentService, AppointmentStatistics } from '../../services/appointment.service';
-import { Appointment, AppointmentStatus } from '../../models/appointment.model';
+import { Appointment } from '../../models/appointment.model';
+import { getStatusClasses, getStatusLabel } from '../../utils/appointment-format';
 
 type AppointmentTab =
   | 'UPCOMING'
@@ -53,6 +54,10 @@ export class MyAppointments implements OnInit {
   appointmentToCancel: Appointment | null = null;
   isCancelling = false;
   cancellationError = '';
+
+  // Helpers d'affichage exposés au template
+  readonly getStatusLabel = getStatusLabel;
+  readonly getStatusClasses = getStatusClasses;
 
   ngOnInit(): void {
     this.loadAppointments();
@@ -184,42 +189,6 @@ export class MyAppointments implements OnInit {
 
     this.currentPage--;
     this.loadAppointments();
-  }
-
-  /**
-   * Returns the display label for an appointment status.
-   */
-  getStatusLabel(status: AppointmentStatus): string {
-    switch (status) {
-      case 'SCHEDULED':
-        return 'Scheduled';
-      case 'COMPLETED':
-        return 'Completed';
-      case 'NO_SHOW':
-        return 'No Show';
-      case 'CANCELLED':
-        return 'Cancelled';
-      default:
-        return status;
-    }
-  }
-
-  /**
- * Returns the CSS classes for an appointment status.
- */
-  getStatusClasses(status: AppointmentStatus): string {
-    switch (status) {
-      case 'SCHEDULED':
-        return 'bg-surface-accent text-accent';
-      case 'COMPLETED':
-        return 'bg-info-soft text-info';
-      case 'NO_SHOW':
-        return 'bg-warning-soft text-warning';
-      case 'CANCELLED':
-        return 'bg-danger-soft text-danger';
-      default:
-        return 'bg-neutral-soft text-neutral';
-    }
   }
 
   /**
